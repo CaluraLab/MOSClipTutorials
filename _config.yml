@@ -6,7 +6,7 @@ baseurl: "/MOSClipTutorials"
 url: "https://caluralab.github.io" 
 
 
-theme: cayman 
+theme: jekyll-theme-cayman 
 
 # Plugins (optional)
 #plugins:
