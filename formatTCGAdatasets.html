@@ -11,7 +11,7 @@
 
 
 
-<title>downloadData.knit</title>
+<title>formatTCGAdatasets.knit</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -352,81 +352,196 @@ display: none;
 </div>
 
 
-<div id="download-ovarian-cancer-dataset-from-tcga" class="section level1">
-<h1>Download Ovarian Cancer dataset from TCGA</h1>
-<pre class="r"><code>library(TCGAbiolinks)</code></pre>
-<pre class="r"><code>tumor = &quot;OV&quot;
-project = paste0(&quot;TCGA-&quot;, tumor)
+<div id="how-to-format-tcga-datasets-for-mosclip-analysis" class="section level1">
+<h1>How to format TCGA datasets for MOSClip analysis</h1>
+<p>Need functions stored in functions-to-process-TCGA-data.R file.</p>
+<pre class="r"><code>library(maftools)
+library(checkmate)
+library(org.Hs.eg.db)
+library(impute)
+library(doParallel)
+library(MethylMix)
+library(TCGAbiolinks)
+library(SummarizedExperiment)</code></pre>
+<pre class="r"><code>source(&quot;downloadTCGA/functions-to-process-TCGA-data.R&quot;)
+
 genome = &quot;hg38&quot;
+tumor = &quot;OV&quot;
+project = paste0(&quot;TCGA-&quot;, tumor)
 
-methylation_platforms &lt;- c(&quot;Illumina Human Methylation 27&quot;,
-                           &quot;Illumina Human Methylation 450&quot;)
-
-dirname = &quot;downloadTCGA&quot;
-if (!file.exists(dirname)){
-  dir.create(dirname)
-}</code></pre>
-<div id="clinical-data" class="section level2">
-<h2>Clinical data</h2>
-<pre class="r"><code>cliQuery &lt;- GDCquery(project = project, data.category = &quot;Clinical&quot;, 
-                     data.format = &quot;bcr xml&quot;)
-GDCdownload(cliQuery, method=&quot;api&quot;, files.per.chunk = 10, 
-            directory = &quot;downloadTCGA/GDCdata&quot;)
-followUp &lt;- GDCprepare_clinic(cliQuery, clinical.info = &quot;follow_up&quot;,
-                              directory = &quot;downloadTCGA/GDCdata&quot;)
-newTumorEvent &lt;- GDCprepare_clinic(cliQuery, clinical.info = &quot;new_tumor_event&quot;,
-                                   directory = &quot;downloadTCGA/GDCdata&quot;)</code></pre>
-</div>
+# load data downloaded by TCGAbiolinks
+load(paste0(&quot;downloadTCGA/&quot;, project, &quot;-&quot;, genome, &quot;.RData&quot;))</code></pre>
 <div id="expression" class="section level2">
 <h2>Expression</h2>
-<pre class="r"><code>expQuery &lt;- GDCquery(project = project,
-                     data.category = &quot;Transcriptome Profiling&quot;,
-                     data.type = &quot;Gene Expression Quantification&quot;,
-                     workflow.type = &quot;STAR - Counts&quot;)
-GDCdownload(expQuery, method = &quot;api&quot;, files.per.chunk = 6, 
-            directory = &quot;downloadTCGA/GDCdata&quot;)
-exprData &lt;- GDCprepare(expQuery, directory = &quot;downloadTCGA/GDCdata&quot;)</code></pre>
-</div>
-<div id="methylation" class="section level2">
-<h2>Methylation</h2>
-<pre class="r"><code>metQuery &lt;- GDCquery(project = project,
-                     data.category = &quot;DNA Methylation&quot;,
-                     data.type = &quot;Methylation Beta Value&quot;,
-                     platform = methylation_platforms)
-GDCdownload(metQuery, method = &quot;api&quot;, directory = &quot;downloadTCGA/GDCdata&quot;)
+<pre class="r"><code># convert ensembl ids into entrez
+geneAnnotation &lt;- rowData(exprData)
 
-metQuery27 &lt;- GDCquery(project = project,
-                       data.category = &quot;DNA Methylation&quot;,
-                       data.type = &quot;Methylation Beta Value&quot;,
-                       platform = methylation_platforms[[1]])
-metData27 &lt;- GDCprepare(metQuery27, directory = &quot;downloadTCGA/GDCdata&quot;)
+ensembl2entrez &lt;- mapIds(org.Hs.eg.db, 
+                         keys = sub(&quot;\\..*&quot;, &quot;&quot;, geneAnnotation$gene_id),
+                         column = &quot;ENTREZID&quot;, keytype = &quot;ENSEMBL&quot;)
+geneAnnotation$entrezID &lt;- ensembl2entrez
 
-metQuery450 &lt;- GDCquery(project = project,
-                        data.category = &quot;DNA Methylation&quot;,
-                        data.type = &quot;Methylation Beta Value&quot;,
-                        platform = methylation_platforms[[2]])
-metData450 &lt;- GDCprepare(metQuery450, directory = &quot;downloadTCGA/GDCdata&quot;)</code></pre>
+rowData(exprData) &lt;- geneAnnotation
+genes &lt;- geneAnnotation$gene_id[!is.na(geneAnnotation$entrezID)]</code></pre>
+<pre class="r"><code># select primary tumors
+colAnnotation &lt;- exprData@colData
+primaryTumorSel  &lt;- colAnnotation$definition==&quot;Primary solid Tumor&quot;
+primaryTumor &lt;- colnames(exprData)[primaryTumorSel]</code></pre>
+<pre class="r"><code>exprData &lt;- exprData[genes, primaryTumor, drop=F]</code></pre>
+<pre class="r"><code># take average for duplicated entrez ids
+exp &lt;- assay(exprData, 1)
+row.names(exp) &lt;- sub(&quot;\\..*&quot;, &quot;&quot;, row.names(exprData))
+
+avg &lt;- tapply(row.names(exp), rowData(exprData)$entrezID, function(r){
+  row = exp[r, ,drop=F]
+  if (nrow(row)&gt;1)
+    row=colMeans(row, na.rm = T)
+  row
+})
+
+expAvg &lt;- do.call(rbind, avg)
+row.names(expAvg) &lt;- names(avg)
+
+colnames(expAvg) &lt;- substr(colnames(expAvg), 1, 12)
+
+expAvg[1:6, 1:6]</code></pre>
+<pre><code>##           TCGA-20-1687 TCGA-29-2414 TCGA-24-1416 TCGA-29-1697 TCGA-25-1635
+## 1                    1           13            1            3            3
+## 10                   1            3            0            6            8
+## 100                307          556          352          373          530
+## 1000              1112          517          319         7134         3755
+## 10000              274          531           95          564          885
+## 100009668            2            6            8           30            4
+##           TCGA-20-1686
+## 1                    1
+## 10                   1
+## 100                173
+## 1000                77
+## 10000              308
+## 100009668           16</code></pre>
 </div>
 <div id="mutation" class="section level2">
 <h2>Mutation</h2>
-<pre class="r"><code>mutQuery &lt;- GDCquery(
-    project = project, 
-    data.category = &quot;Simple Nucleotide Variation&quot;, 
-    data.type = &quot;Masked Somatic Mutation&quot;,
-    workflow.type = &quot;Aliquot Ensemble Somatic Variant Merging and Masking&quot;)
+<pre class="r"><code>maf &lt;- read.maf(mutData)</code></pre>
+<pre><code>## -Validating
+## -Silent variants: 9351 
+## -Summarizing
+## --Mutiple centers found
+## WUGSC;BI;BI;WUGSC--Possible FLAGS among top ten genes:
+##   TTN
+##   USH2A
+##   MUC16
+##   HMCN1
+##   FLG
+## -Processing clinical data
+## --Missing clinical data
+## -Finished in 0.926s elapsed (2.266s cpu)</code></pre>
+<pre class="r"><code>considerThisImpactType &lt;- c(&quot;HIGH&quot;, &quot;MODERATE&quot;)
 
-GDCdownload(mutQuery, method = &quot;api&quot;, directory = &quot;downloadTCGA/GDCdata&quot;)
-mutData &lt;- GDCprepare(mutQuery, directory = &quot;downloadTCGA/GDCdata&quot;)</code></pre>
+ov.mutations &lt;- prepareMutations(maf@data, impact=considerThisImpactType, 
+                                 filterByThisEntrez=row.names(expAvg), 
+                                 patients=colnames(expAvg))
+
+ov.mutations$data[1:6,1:6]</code></pre>
+<pre><code>##           TCGA-24-2033 TCGA-13-1488 TCGA-24-1844 TCGA-25-2400 TCGA-09-2045
+## 1                    1            0            0            0            0
+## 10                   0            1            1            0            0
+## 100                  0            0            0            1            0
+## 1000                 0            0            0            0            1
+## 10003                0            0            0            0            0
+## 100049587            0            0            0            0            0
+##           TCGA-23-1029
+## 1                    0
+## 10                   0
+## 100                  0
+## 1000                 1
+## 10003                0
+## 100049587            0</code></pre>
 </div>
-<div id="copy-nymber-variation" class="section level2">
-<h2>Copy nymber variation</h2>
-<pre class="r"><code>gisticTable &lt;- getGistic(&quot;OV-TP&quot;, type = &quot;thresholded&quot;)
-cnvData &lt;- gisticTable[, -c(1:3)]
-colnames(cnvData) &lt;- substr(colnames(cnvData), 1, 12)
-row.names(cnvData) &lt;- gisticTable$`Locus ID`</code></pre>
-<p>Save downloaded data in .RData file.</p>
-<pre class="r"><code>save(exprData, metData27, metData450, mutData, cnvData, followUp, newTumorEvent, 
-     file = paste0(dirname, &#39;/&#39;, project, &quot;-&quot;, genome, &quot;.RData&quot;))</code></pre>
+<div id="cnv" class="section level2">
+<h2>CNV</h2>
+<pre class="r"><code>ov.cnv &lt;- lapply(cnvData, as.numeric)
+ov.cnv &lt;- data.frame(ov.cnv, check.names = F)
+row.names(ov.cnv) &lt;- row.names(cnvData)
+
+for (i in names(ov.cnv)) {
+  if (!identical(ov.cnv[[i]], as.numeric(cnvData[[i]])))
+    warning(&quot;sample number &quot;, i, &quot; is not equal after numeric transformation&quot;)
+}
+
+ov.cnv[1:6,1:6]</code></pre>
+<pre><code>##        TCGA-04-1331 TCGA-04-1332 TCGA-04-1335 TCGA-04-1336 TCGA-04-1337
+## 116983           -1            0           -1            1            0
+## 140625           -1            0           -1            1            0
+## 375790           -1            0           -1            1            0
+## 441869           -1            0           -1            1            0
+## 55210            -1            0           -1            1            0
+## 83858            -1            0           -1            1            0
+##        TCGA-04-1338
+## 116983           -2
+## 140625           -2
+## 375790           -2
+## 441869           -2
+## 55210            -2
+## 83858            -2</code></pre>
+</div>
+<div id="methylation" class="section level2">
+<h2>Methylation</h2>
+<pre class="r"><code># Select primary solid tumors
+sampleSelection &lt;- colData(metData27)[[5]] == &quot;Primary solid Tumor&quot;
+normalSelection &lt;- colData(metData27)[[5]] == &quot;Solid Tissue Normal&quot;
+samples &lt;- colnames(metData27)[sampleSelection]
+normals &lt;- colnames(metData27)[normalSelection]
+normData &lt;- metData27[, normals]
+metData &lt;- metData27[, samples]
+
+# Remove all rows with low values and impute missing values
+thr &lt;- ncol(assay(normData))*0.4
+remove &lt;- apply(assay(normData),1,sum) &gt; thr
+normAssay &lt;- assay(normData)[!remove, ]
+normAssay &lt;- imputeKNN(normAssay,k=5)$data</code></pre>
+<pre><code>## Warning in knnimp(x, k, maxmiss = rowmax, maxp = maxp): 3593 rows with more than 50 % entries missing;
+##  mean imputation used for these rows</code></pre>
+<pre class="r"><code>thr &lt;- ncol(assay(metData))*0.4
+remove &lt;- apply(is.na(assay(metData)),1,sum) &gt; thr
+metAssay &lt;- assay(metData)[!remove, ]
+metAssay &lt;- imputeKNN(metAssay,k=5)$data
+
+# make clusters
+cl &lt;- makeCluster(16)
+registerDoParallel(cl)
+metClustValues &lt;- ClusterProbes(metAssay, normAssay)</code></pre>
+<pre><code>## Removing 2115 probes with SNPs.
+## Clustering 15383 probes in CpG site clusters.
+## Removing doubles for 1 samples.
+## 
+## Found 12195 CpG site clusters.</code></pre>
+<pre class="r"><code>stopCluster(cl)</code></pre>
+<pre class="r"><code># connect methylation clusters to genes
+geneNames &lt;- sapply(strsplit(row.names(metClustValues$MET_Cancer_Clustered), &quot;---&quot;),
+                    function(x) x[1])
+assList &lt;- tapply(row.names(metClustValues$MET_Cancer_Clustered), geneNames, function(g) g)
+symbol2entrez &lt;- mapIds(org.Hs.eg.db, keys=names(assList), column=&quot;ENTREZID&quot;,
+                        keytype=&quot;SYMBOL&quot;)
+names(assList) &lt;- symbol2entrez
+metClustValues$eMap &lt;- assList[!is.na(names(assList))]</code></pre>
+</div>
+<div id="survival-annotation" class="section level2">
+<h2>Survival annotation</h2>
+<pre class="r"><code>fup&lt;-createFollowUp(followUp, newTumorEvent)</code></pre>
+</div>
+<div id="two-class-annotation" class="section level2">
+<h2>Two-class annotation</h2>
+<pre class="r"><code>subtypes &lt;- PanCancerAtlas_subtypes()
+table(subtypes[subtypes$cancer.type==&quot;OVCA&quot;, &quot;Subtype_mRNA&quot;])</code></pre>
+<pre><code>## Subtype_mRNA
+## Differentiated Immunoreactive    Mesenchymal  Proliferative 
+##            135            107            109            138</code></pre>
+<pre class="r"><code>subtypes &lt;- subtypes[subtypes$cancer.type==&quot;OVCA&quot;,]
+
+classes &lt;- data.frame(row.names = substr(subtypes$pan.samplesID, 1, 12), 
+                      classes=subtypes$Subtype_mRNA)</code></pre>
+<pre class="r"><code>save(classes, fup, metClustValues, ov.cnv, ov.mutations, expAvg, file=&quot;downloadTCGA/TCGA-OV-pre-processed.RData&quot;)</code></pre>
 </div>
 </div>
 
