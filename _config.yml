@@ -1,9 +1,9 @@
 # _config.yml
 
 title: "MOSClip Tutorials"
-description: "Tutorials series"
-baseurl: ""  
-url: "https://CaluraLab.github.io" 
+description: "Tutorial series"
+baseurl: "/MOSClipTutorials"  
+url: "https://caluralab.github.io" 
 
 
 theme: minima 
