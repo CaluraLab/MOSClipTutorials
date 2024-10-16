@@ -8,10 +8,7 @@ url: "https://caluralab.github.io"
 
 theme: jekyll-theme-cayman 
 
-# Plugins (optional)
-#plugins:
-#  - jekyll-feed  # Example: Add an RSS feed for your site
 
 # Additional Settings
-markdown: kramdown  # The default Markdown engine used by Jekyll
-#permalink: pretty  # Clean URLs without file extensions (optional)
+markdown: kramdown  
+permalink: pretty  
