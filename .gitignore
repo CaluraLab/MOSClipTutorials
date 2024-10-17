@@ -1,3 +1,5 @@
 /_site/
 Gemfile*
 .DS_Store
+.Rproj.user
+*.Rproj

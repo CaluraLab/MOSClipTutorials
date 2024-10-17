@@ -1,0 +1,109 @@
+
+
+```{r message=FALSE}
+library(TCGAbiolinks)
+```
+
+```{r}
+tumor = "OV"
+project = paste0("TCGA-", tumor)
+genome = "hg38"
+
+methylation_platforms <- c("Illumina Human Methylation 27",
+                           "Illumina Human Methylation 450")
+
+dirname = "downloadTCGA"
+if (!file.exists(dirname)){
+  dir.create(dirname)
+}
+```
+
+## Clinical data
+
+```{r message=FALSE, eval=FALSE}
+cliQuery <- GDCquery(project = project, data.category = "Clinical", 
+                     data.format = "bcr xml")
+
+GDCdownload(cliQuery, method="api", files.per.chunk = 10, 
+            directory = "downloadTCGA/GDCdata")
+
+followUp <- GDCprepare_clinic(cliQuery, clinical.info = "follow_up",
+                              directory = "downloadTCGA/GDCdata")
+newTumorEvent <- GDCprepare_clinic(cliQuery, clinical.info = "new_tumor_event",
+                                   directory = "downloadTCGA/GDCdata")
+```
+
+## Expression
+
+```{r message=FALSE, eval=FALSE}
+expQuery <- GDCquery(project = project,
+                     data.category = "Transcriptome Profiling",
+                     data.type = "Gene Expression Quantification",
+                     workflow.type = "STAR - Counts")
+
+GDCdownload(expQuery, method = "api", directory = "downloadTCGA/GDCdata")
+
+exprData <- GDCprepare(expQuery, directory = "downloadTCGA/GDCdata")
+```
+
+## Methylation
+
+```{r message=FALSE, eval=FALSE}
+metQuery <- GDCquery(project = project,
+                     data.category = "DNA Methylation",
+                     data.type = "Methylation Beta Value",
+                     platform = methylation_platforms)
+
+GDCdownload(metQuery, method = "api", directory = "downloadTCGA/GDCdata")
+
+
+metQuery27 <- GDCquery(project = project,
+                       data.category = "DNA Methylation",
+                       data.type = "Methylation Beta Value",
+                       platform = methylation_platforms[[1]])
+
+metData27 <- GDCprepare(metQuery27, directory="downloadTCGA/GDCdata")
+
+metQuery450 <- GDCquery(project = project,
+                        data.category = "DNA Methylation",
+                        data.type = "Methylation Beta Value",
+                        platform = methylation_platforms[[2]])
+
+metData450 <- GDCprepare(metQuery450, directory="downloadTCGA/GDCdata")
+```
+
+## Mutation
+
+```{r message=FALSE, eval=FALSE}
+mutQuery <- GDCquery(
+    project = project, 
+    data.category = "Simple Nucleotide Variation", 
+    data.type = "Masked Somatic Mutation",
+    workflow.type = "Aliquot Ensemble Somatic Variant Merging and Masking")
+
+GDCdownload(mutQuery, method = "api", directory = "downloadTCGA/GDCdata")
+
+mutData <- GDCprepare(mutQuery, directory = "downloadTCGA/GDCdata")
+```
+
+## Copy Number Variation
+
+```{r eval=FALSE}
+gisticTable <- getGistic("OV-TP", type = "thresholded")
+cnvData <- gisticTable[,-c(1:3)]
+colnames(cnvData) <- substr(colnames(cnvData), 1, 12)
+row.names(cnvData) <- gisticTable$`Locus ID`
+```
+
+
+Save downloaded data in .RData file.
+
+```{r eval=FALSE}
+if (!file.exists(paste0(dirname, '/', project, "-", genome, ".RData"))){
+    save(exprData, metData27, metData450, mutData, cnvData, 
+         followUp, newTumorEvent, 
+         file = paste0(dirname, '/', project, "-", genome, ".RData"))
+}
+```
+
+
