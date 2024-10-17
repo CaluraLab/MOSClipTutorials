@@ -100,9 +100,10 @@ Save downloaded data in .RData file.
 
 ```{r eval=FALSE}
 if (!file.exists(paste0(dirname, '/', project, "-", genome, ".RData"))){
-    save(exprData, metData27, metData450, mutData, cnvData, 
+    save(exprData, metData27, mutData, cnvData, 
          followUp, newTumorEvent, 
-         file = paste0(dirname, '/', project, "-", genome, ".RData"))
+         file = paste0(dirname, '/', project, "-", genome, ".RData"), 
+         compress = "xz")
 }
 ```
 
