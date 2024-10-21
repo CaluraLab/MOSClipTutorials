@@ -2,7 +2,7 @@
 # MOSClip Tutorials
 ## Welcome to MOSClip tutorial series!
 
-[MOSClip](https://caluralab.github.io/MOSClipTutorials/about.md) is an R package that allows performing multi-omic survival analysis exploiting pathway topology. 
+[MOSClip](https://caluralab.github.io/MOSClipTutorials/about.html) is an R package that allows performing multi-omic survival analysis exploiting pathway topology. 
 
 ![Cover](figures/cover.png)
 

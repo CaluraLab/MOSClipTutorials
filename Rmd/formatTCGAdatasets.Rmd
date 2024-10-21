@@ -1,12 +1,8 @@
 
 
 ```{r message=FALSE}
-library(curatedTCGAData)
-library(TCGAutils)
 library(maftools)
-library(checkmate)
 library(org.Hs.eg.db)
-library(EDASeq)
 library(impute)
 library(doParallel)
 library(MethylMix)
@@ -17,14 +13,14 @@ library(TCGAbiolinks)
 # Pre-processing
 
 ```{r message=FALSE}
-source("../MOSresults/downloadTCGA/functions-to-process-TCGA-data.R")
-# external_annotation=TRUE
+source("../functions-to-process-TCGA-data.R")
+
 genome = "hg38"
 tumor = "OV"
 project = paste0("TCGA-", tumor)
 
 # load data downloaded by TCGAbiolinks
-load("../MOSresults/downloadTCGA/rawData.RData")
+load("downloadTCGA/TCGA-OV-hg38.RData")
 ```
 
 ## Expression
@@ -71,7 +67,6 @@ row.names(expAvg) <- names(avg)
 colnames(expAvg) <- substr(colnames(expAvg), 1, 12)
 
 expAvg[1:6, 1:6]
-dim(expAvg)
 ```
 
 ## Mutation
@@ -87,7 +82,6 @@ ov.mutations <- prepareMutations(maf@data, impact=considerThisImpactType,
                                  patients=colnames(expAvg))
 
 ov.mutations$data[1:6,1:6]
-dim(ov.mutations$data)
 ```
 
 ## CNV
@@ -103,7 +97,6 @@ for (i in names(ov.cnv)) {
 }
 
 ov.cnv[1:6,1:6]
-dim(ov.cnv)
 ```
 
 ## Methylation
@@ -149,16 +142,7 @@ metClustValues$eMap <- assList[!is.na(names(assList))]
 ## Survival annotation
 
 ```{r}
-fup<-suppressWarnings(read_excel("../MOSresults/downloadTCGA/1-s2.0-S0092867418302290-mmc1.xlsx", sheet=1, range = "B1:AH11161"))
-fup <- fup[fup$type=="OV",]
-fup <- list(os=data.frame(row.names=fup$bcr_patient_barcode,
-                          status=fup$OS,
-                          days=fup$`OS.time`, stringsAsFactors = F),
-            pfs=data.frame(row.names=fup$bcr_patient_barcode,
-                           status=fup$PFI,
-                           days=fup$`PFI.time`, stringsAsFactors = F))
-
-#fup<-createFollowUp(followUp, newTumorEvent)
+fup <- createFollowUp(followUp, newTumorEvent)
 ```
 
 ## Two-class annotation
@@ -174,7 +158,8 @@ classes <- data.frame(row.names = substr(subtypes$pan.samplesID, 1, 12),
 ```
 
 ```{r eval=FALSE}
-save(classes, fup, metClustValues, ov.cnv, ov.mutations, expAvg, file="/MOSresults/downloadTCGA/TCGA-OV-pre-processed.RData")
+save(classes, fup, metClustValues, ov.cnv, ov.mutations, expAvg, 
+     file="downloadTCGA/TCGA-OV-pre-processed.RData")
 ```
 
 

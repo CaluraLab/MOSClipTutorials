@@ -98,7 +98,7 @@ row.names(cnvData) <- gisticTable$`Locus ID`
 
 Save downloaded data in .RData file.
 
-```{r eval=FALSE}
+```{r eval=FALSE, echo=FALSE}
 if (!file.exists(paste0(dirname, '/', project, "-", genome, ".RData"))){
     save(exprData, metData27, mutData, cnvData, 
          followUp, newTumorEvent, 
