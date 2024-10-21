@@ -1,0 +1,216 @@
+---
+title: "MOSClip - Survival Analysis"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+# Preface
+
+This tutorial will walk you to perform a complete analysis of multi-omics data associated with survival using MOSClip R package.
+
+MOSClip is a method to combines survival analysis and graphical model theory to test the survival association of pathways or of their connected components that we called modules in a multi-omic framework. Multi-omic gene measurements are tested as covariates of a Cox proportional hazard model after dimensionality reduction of data. The final goal is to find the biological processes impacting the patient’s survival.
+
+MOSClip has a modular structure, allowing the use of one or multiple different omics, as well as different data reduction strategies and tests.
+
+In this tutorial we will focus on the integration of four omics: methylome, transcriptome, genomic mutations and genomic copy number variations, testing if these omics can be sinergically involved in pathways with survival prognostication power.
+
+Furthermore, in MOSClip multiple efforts have been dedicated to the implementation of specific graphical tools to browse, manage and provide help in the interpretation of results. In this tutorial we will also exploit these tools to represent analysis results.
+
+# Preparing the enviornment for the analysis
+
+First we need to load the necessary libraries:
+```{r message=FALSE}
+# Loading libraries
+library(curatedTCGAData)
+library(TCGAutils)
+library(maftools)
+library(checkmate)
+library(org.Hs.eg.db)
+library(EDASeq)
+library(impute)
+library(doParallel)
+library(MethylMix)
+library(TCGAbiolinks)
+library(MOSClip)
+library(graphite)
+```
+Data retrieving and data analysis will depend on your computational resources. Generally, it needs time and disk space. To speed up this tutorial, we pre-processed the TCGA data for you, which can be downloaded through this link (INSERT HeRE). Details on how to pre-process and format the data are available [here](https://caluralab.github.io/MOSClipTutorials/formatTCGAdatasets.html).
+
+The provided dataset includes matrices, genes per patients, of methylation status, somatic mutations, CNVs, and transcript expression levels of the TCGA ovarian cancer samples.
+
+Move the dataset file inside a directory called "downloadTCGA" in your working directory.
+Now, we can load it:
+
+```{r}
+# Loading pre-processed data
+load("downloadTCGA/TCGA-OV-pre-processed.RData")
+```
+
+Next, it is recommended to create a directory to save the analysis results.
+```{r}
+dirname = "MOSresults"
+if (!file.exists(dirname)) { # Checks whether the directory exists
+    dir.create(dirname) # If it doesn't, creates a new directory 
+}
+```
+The next step is to modifiy all the multi-omics matrices assigning the type of gene identifier. Here, we will work with Entrez Gene ID. It is indicated with the prefix tag “ENTREZID:”, compliant with Bioconductor org.dbi, as used in the latest graphite R package version. This will allow us to be able to match the omics data to graphite pathways.
+
+```{r}
+# Renaming the matrix and then adding the prefix to the gene identifiers
+expression <- expAvg
+row.names(expression) <- paste0("ENTREZID:", row.names(expression))
+mutation <- ov.mutations$data
+row.names(mutation) <- paste0("ENTREZID:", row.names(mutation))
+names(metClustValues$eMap) <- paste0("ENTREZID:", row.names(metClustValues$eMap))
+row.names(ov.cnv) <- paste0("ENTREZID:", row.names(ov.cnv))
+```
+
+The TCGA dataset came along with the survival annotations from the table by Liu et al, Cell, 2018. Among the data loaded we can find the object ‘fup’ (short of ‘followup’) that represents our survival annotations. 
+
+We extract the slot for the "progression free survival" (pfs) and we save it in a variable named *survAnnotations*. Then,we want to select only the patients that have samples for all the four omics of our interest. 
+
+```{r}
+# Getting survival data 
+survAnnotations <- fup$pfs
+
+# Selecting the patients with samples for all omics
+survAnnot <- na.omit(survAnnotations)
+patients <- row.names(survAnnot)
+patients <- intersect(patients, colnames(expression))
+patients <- intersect(patients, colnames(metClustValues$MET_Cancer_Clustered))
+patients <- intersect(patients, colnames(mutation))
+patients <- intersect(patients, colnames(ov.cnv))
+
+survAnnot <- survAnnot[patients, , drop = F]
+
+# If the survAnnot RData file does not exist, create and save it.
+if (!file.exists("survAnnot.RData")) {
+    file = paste0(dirname, "/survAnnot-", as.character(Sys.Date()), ".RData")
+    link = "survAnnot.RData"
+    save(survAnnot, file = file)
+    file.symlink(file, link)
+}
+
+# Selecting the patients for the omics:
+methylation <- metClustValues
+methylation$MET_Cancer_Clustered <- methylation$MET_Cancer_Clustered[, patients, 
+    drop = F]
+mutation <- mutation[, patients, drop = F]
+cnv <- ov.cnv[, patients, drop = F]
+```
+
+If you was enough attentive, you noticed that we didn't perform the patient selection for the expression matrix. That is because we are going to perfom some extra steps after dropping the patients of this matrix. We need to filter the genes to avoid data sparsity, keeping only those genes with at least 100 counts in at least one patients. 
+
+After the selection of patients and genes of the expression matrix, we perform  normalization and log2 of the (counts+1) transformation. This will ensure us to work with expression data that is very similar to a normal distribution, which is the most suitable distribution for the subsequent *MOSClip* tests. The normalization of the data is performed according to the data provided, which can change when the patients and/or samples change. That is why this step is performed after the patient selection and it is present in this tutorial, and not in the previous tutorial ([how to format the dataset for MOSClip](https://caluralab.github.io/MOSClipTutorials/formatTCGAdatasets.html))
+
+```{r}
+# Keeping the patients
+expression <- expression[, patients, drop = F]
+
+# Filtering the counts 
+keep = apply(expression >= 100, 1, any)
+
+# Normalizing the counts
+expNorm <- betweenLaneNormalization(expression[keep, , drop = F], which = "upper")
+pseudoExpNorm <- log2(expNorm + 1)
+```
+
+At this point, we need the a pathway knowledge-base. We will use the Reactome pathway graphs available at *graphite* R package. Reactome is natively distributed in Uniprot, our analysis will be in Entrez gene ID, thus we need to convert the pathway identifiers.
+
+Since we are downloading and converting all the Reactom pathways, this step may take a while. To avoid the boredom of waiting for this step again, we will save the object for future analysis.
+
+```{r}
+# If the file doesn't exist, create it
+if (file.exists("reactome-entrez.RData")) {
+    load("reactome-entrez.RData")
+} else {
+    reactome <- pathways("hsapiens", "reactome") # getting the Homo sapiens pathways from Reactome
+    reactome <- convertIdentifiers(reactome, "entrez") 
+    file = paste0(dirname, "/reactome-entrez-", as.character(Sys.Date()), ".RData")
+    link = "reactome-entrez.RData"
+    save(reactome, file = file)
+    file.symlink(file, link)
+}
+```
+
+The Reactome database has a hierarchical structure, and for this tutorial we are going to analyze only subsets of the pathways. We will cut the pathways according to their sizes. 
+
+For the pathway analysis, we are going to use *reactHuge*, a subset that have all the pathways with more (or equal) than 10 nodes. For module analysis, we are going to use *reactSmall*, so the pathways that are bigger than 20 nodes but smaller that 100 nodes. 
+
+This will ensure a sufficient level of specificity of the pathway/modules and will avoid unusefull reaction redundancies.
+
+```{r}
+nodesLength <- sapply(reactome, function(g) {
+    length(intersect(graphite::nodes(g), row.names(pseudoExpNorm)))
+})
+reactSmall <- reactome[nodesLength >= 20 & nodesLength <= 100]
+reactHuge <- reactome[nodesLength >= 10]
+```
+
+We also need the pathway hierarchy for the *MOSClip* summary plots, so it is convenient to download it now. 
+```{r}
+pathHierarchy <- downloadPathwayRelationFromReactome()
+pathHierarchyGraph <- igraph::graph.data.frame(d = pathHierarchy, directed = TRUE)
+```
+
+# Creating the Omics object
+
+We are almost ready to run MOSClip! First, we just need to organize the omics matrices in the specific *MOSClip* object: the *Omics* object. This object wraps together all the omics matrices, containing also the survival annotation (or any other type of "colData"), and specific arguments for the dimentionality reduction step. 
+
+Then, we need to indicate the data reduction strategy we want to apply for each matrix/omics. In this tutorial, we chose to use PCA for expression data, cluster analysis for methylation data, vote counting for mutations and CNVs (for detail see [MOSClip paper](https://doi.org/10.1093/nar/gkz324)). This data transformations are easily applied calling *MOSClip* functions, thus here we need only to provide the name of the needed function.
+
+Specifically for the methylation data, *MOSClip* provides the possibility to include a dictionary to associate the methylation level of multiple CpG. This is because it is expected to have more than one CpG cluster associated to a gene. Thus, in the methylation specific arguments you need to provide the dictionary to convert cluster names into genes.
+
+```{r}
+multiOmics <- makeOmics(experiments = list(exp = pseudoExpNorm,
+                                           met = methylation$MET_Cancer_Clustered,
+                                           mut = mutation,
+                                           cnv = cnv),
+                        colData = survAnnot,
+                        modelInfo = c("summarizeWithPca", "summarizeInCluster", "summarizeToNumberOfEvents", "summarizeToNumberOfDirectionalEvents"),
+                        specificArgs = list(pcaArgs = list(name = "exp", shrink = "FALSE", method = "sparse", maxPCs = 3),
+                                            clusterArgs = list(name = "met", dict = methylation$eMap, max_cluster_number = 3),
+                                            countEvent = list(name = "mut", min_prop = 0.05),
+                                            cnvAgv = list(name = "cnv", min_prop = 0.05)))
+
+save(multiOmics, file = "multiOmics.RData")
+```
+
+As you can see, in this object we specified the four omic data, we chose four methods for data reduction (one for each omic), and four lists of additional parameters (as described in the help of each reduction function).
+
+# Running MOSClip analysis
+*MOSClip* analysis can be performed at the pathway or at the module level, where modules are sub-parts of pathways. A pathway analysis give a general overview of the involved processes, the module analysis can highlights more precisely the mechanism involved.
+
+For both type of analysis, we perform another *a priori* filter, using the genes that are present at least in the expression data, but this is not mandatory.
+
+```{r}
+genesToConsider <- row.names(pseudoExpNorm)
+```
+
+## Module Analysis
+Here we are going to perofm the multi-omics survival analysis on pathway **modules**. 
+
+This step will create a list of *MultiOmicsModules* objects (aka "MOM" objects), in which each of them corresponds to one pathway.
+
+The analysis is quite long, so we will also save the analysis results for future usage. 
+```{r}
+if (file.exists("multiOmicsReactome.RData")) {
+    load("multiOmicsReactome.RData")
+} else {
+    multiOmicsReactome <- lapply(reactSmall, function(g) {
+        print(g@title)  # so you can see which pathway is being analyzed
+        res <- multiOmicsSurvivalModuleTest(multiOmics, g, survAnnot, useThisGenes = genesToConsider) # for each pathway contained in reactSmall, create the MOM object
+        res
+    })
+    file = paste0(dirname, "/multiOmicsReactome-", as.character(Sys.Date()), ".RData")
+    link = "multiOmicsReactome.RData"
+    save(multiOmicsReactome, file = file)
+    file.symlink(file, link)
+}
+```
+
+Now the analysis are done and we are ready to check it! *MOSClip* has plenty of functions to visually explore the results. We will show you some examples in the following part.
+
+### Module summary
