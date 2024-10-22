@@ -1,29 +1,35 @@
-
-```{r message=FALSE}
-library(curatedTCGAData)
-library(TCGAutils)
-library(maftools)
-library(checkmate)
-library(org.Hs.eg.db)
-library(EDASeq)
-library(impute)
-library(doParallel)
-library(MethylMix)
-library(TCGAbiolinks)
-library(MOSClip)
-library(graphite)
-```
+---
+title: "MOSClip Two-Class Analysis on TCGA ovarian cancer patients"
+output: html_document
+---
 
 ## Prepare data for MOSClip analysis
 
-```{r}
-# load pre-processed data
-load("../MOSresults/downloadTCGA/TCGA-OV-pre-processed.RData")
+Now we are almost ready to run a two-class analysis with MOSClip!
+First of all, we can load necessary libraries and the pre-processed ovarian cancer data 
+that we downloaded in the previous tutorials from TCGA.
+We will also set a seed, in order to have reproducible results in case of future repetition of the analysis.
+
+```{r message=FALSE}
+library(org.Hs.eg.db)
+library(EDASeq)
+library(graphite)
+library(MOSClip)
+library(kableExtra)
+
+
+load("downloadTCGA/TCGA-OV-pre-processed.RData")
+
+set.seed(1234)
 ```
 
-```{r}
-survAnnotations <- fup$pfs
+We need to prepare data in order to run MOSClip. 
+The first step is to modify all the multi-omics matrices assigning the type of gene identifier. 
+Since we will use `graphite` to download a list of pathways and their graphical structure, 
+we need to format gene names for each omic in order to be compatible with `graphite` gene names. 
+Here, we will work with Entrez Gene ID, thus we have to indicate with the prefix tag “ENTREZID:" each gene.
 
+```{r}
 expression <- expAvg
 row.names(expression) <- paste0("ENTREZID:", row.names(expression))
 mutation <- ov.mutations$data
@@ -32,21 +38,26 @@ names(metClustValues$eMap) <- paste0("ENTREZID:", row.names(metClustValues$eMap)
 row.names(ov.cnv) <- paste0("ENTREZID:", row.names(ov.cnv))
 ```
 
+Moving to patient selection, we will keep only patients whose class annotation 
+is available and their intersection with available patients across the 4 omics.
+Finally, our class annotation dataframe will be filtered to keep only selected patients.
+
 ```{r}
-# select common patients (two-class)
-survAnnot <- na.omit(survAnnotations)
+# select common patients
 patients <- row.names(classes)
-patients <- intersect(patients, row.names(survAnnot))
 patients <- intersect(patients, colnames(expression))
 patients <- intersect(patients, colnames(metClustValues$MET_Cancer_Clustered))
 patients <- intersect(patients, colnames(mutation))
 patients <- intersect(patients, colnames(ov.cnv))
 
-survAnnot <- survAnnot[patients, , drop=FALSE]
 classAnnot <- classes[patients, , drop=FALSE]
+
 table(classAnnot)
 ```
 
+At this point, we need to extract selected patients for each multi-omic matrix. 
+After patient selection, we can normalize (upper quartile normalization from `EDASeq` package) 
+and log-transform expression data.
 
 ```{r}
 # normalize expression data
@@ -63,12 +74,25 @@ mutation <- mutation[, patients, drop = F]
 cnv <- ov.cnv[, patients, drop = F]
 ```
 
+We are now ready to generate an object of class `Omics` using MOSClip function `makeOmics`.
+This object is necessary to run each type of `MOSClip` analyses. 
+It is based on `MultiAssayExperiment` object, containing an `ExperimentList` with matrices for each omic 
+(we suggest to use standard names for each experiment as shown in this example).
+`colData` will contain class annotation for patients. Additionally, specific slots 
+for `MOSClip` analysis exist, including `modelInfo`, where the user must specify 
+the desired method for data reduction for each omic, and `specificArgs`, with specific
+parameters to be used by reduction functions. 
+Both these slots must have the same dimension as `ExperimentList`.
+
+The list of available methods for data dimensionality reduction is easily made available 
+with `availableOmicsMethods()`.
+
 ```{r}
 multiOmics <- makeOmics(experiments = list(exp = pseudoExpNorm, 
                                            met = methylation$MET_Cancer_Clustered, 
                                            mut = mutation, 
                                            cnv = as.matrix(cnv)), 
-                        colData = survAnnot,
+                        colData = classAnnot,
     modelInfo = c("summarizeWithPca", "summarizeInCluster", 
     "summarizeToNumberOfEvents", "summarizeToNumberOfDirectionalEvents"), 
     specificArgs = list(pcaArgs = list(name = "exp", shrink = "FALSE", method = "sparse", maxPCs = 3),
@@ -79,25 +103,41 @@ multiOmics <- makeOmics(experiments = list(exp = pseudoExpNorm,
 
 ### Download Reactome pathways
 
+To run a `MOSClip` analysis we also need a list of pathways that we want to test. 
+We decided to use pathways collected in Reactome database. They can be downloaded 
+using `graphite` that also is able to convert gene identifiers (here we are using 
+Entrez Gene ID). This process may take many minutes, for this reason we will save
+the final `PathwayList` object in a specific directory, ready to be used in future analyses.
+
+To avoid redundant and too heavy analyses, we select Reactome pathways based on their 
+number of nodes, considering only nodes that are present at least in the expression matrix.
+We prepare two distinct `PathwayList` objects: 
+* one containing pathways with more than 20 and less than 100 nodes,  
+* a larger one with pathways having more than 10 and less than 700 nodes. 
+
 ```{r}
-if (file.exists("reactome-entrez-2024-05-27.RData")) {
-  load("reactome-entrez-2024-05-27.RData")
+if (file.exists("downloadTCGA/reactome-entrez-2024-05-27.RData")) {
+  load("downloadTCGA/reactome-entrez-2024-05-27.RData")
 } else {
   reactome <- pathways("hsapiens", "reactome")
   reactome <- convertIdentifiers(reactome, "entrez")
-  file = paste0(dirname, "/reactome-entrez-", as.character(Sys.Date()), ".RData")
-  link = "reactome-entrez.RData"
+  file = paste0("downloadTCGA", "/reactome-entrez-", as.character(Sys.Date()), ".RData")
   save(reactome, file = file)
-  file.symlink(file, link)
 }
 
 nodesLength <- sapply(reactome, function(g) {length(intersect(graphite::nodes(g), row.names(pseudoExpNorm)))})
 reactSmall <- reactome[nodesLength >= 20 & nodesLength <= 100]
-reactHuge <- reactome[nodesLength >= 10]
+reactHuge <- reactome[nodesLength >= 10 & nodesLength <= 700]
 ```
 
 ### Prepare class annotations
-Immunoreactive vs Mesenchymal
+
+We define the classes that we want to compare. Here we are using the subtypes 
+defined for TCGA ovarian cancer patients. We think it could be interesting to compare
+on a multi-omic level immunoreactive patients with mesenchymal patients. The user 
+can decide which subtypes to compare.
+
+We can filter accordingly our class annotation data frame and `multiOmics` object.
 
 ```{r}
 class1 <- "Immunoreactive"
@@ -106,24 +146,30 @@ classAnnotation <- classAnnot[classAnnot$classes %in% c(class1, class2), , drop=
 multiOmics <- multiOmics[,row.names(classAnnotation)]
 ```
 
+Now we are ready for MOSClip two-class analysis.
 
 ## Two-class analysis on modules
 
 ```{r message=FALSE, warning=FALSE}
-if (file.exists("twoClassM.rds")){
-  twoClassM <- readRDS("twoClassM.rds")
+if (file.exists("MOSresults/twoClassM.rds")){
+  twoClassM <- readRDS("MOSresults/twoClassM.rds")
 } else { 
-  system.time(twoClassM <- lapply(reactSmall, function(g) {
-    res <- multiOmicsTwoClassModuleTest(multiOmics, g, classAnnotation, useTheseGenes = row.names(pseudoExpNorm))
-    #print(g@title)
-    res
-    }))
-  saveRDS(twoClassM, file="twoClassM.rds")
+    twoClassM <- lapply(reactSmall, function(g) {
+        res <- multiOmicsTwoClassModuleTest(multiOmics, g, classAnnotation, useTheseGenes = row.names(pseudoExpNorm))
+        res
+    })
+    saveRDS(twoClassM, file="MOSresults/twoClassM.rds")
 }
 
 moduleSummary <- multiPathwayModuleReport(twoClassM)
-moduleSummary
 ```
+
+```{r echo=FALSE}
+kable(moduleSummary[1:100,-1]) %>%
+  kable_styling() %>%
+  scroll_box(width = "100%", height = "600px")
+```
+
 
 ### Plots
 
@@ -131,24 +177,57 @@ moduleSummary
 plotModuleReport(twoClassM[["Activation of Matrix Metalloproteinases"]])
 ```
 
-```{r}
-plotModuleInGraph(twoClassM[["Activation of Matrix Metalloproteinases"]], reactSmall, 3)
+```{r message=FALSE}
+plotModuleInGraph(twoClassM[["Activation of Matrix Metalloproteinases"]], reactSmall, 2)
 ```
 
 
-```{r}
-plotModuleHeat(twoClassM[["Activation of Matrix Metalloproteinases"]], 3, additionalAnnotations = classAnnotation, 
+```{r message=FALSE}
+plotModuleHeat(twoClassM[["Activation of Matrix Metalloproteinases"]], 2, additionalAnnotations = classAnnotation, 
                additionalPaletteNames = list(classes="violet"))
 ```
 
+
+### Permutations
+
+```{r echo=FALSE}
+load("../downloadTCGA/twoClassSub_immmes.RData")
+moduleSummary <- multiPathwayModuleReport(twoClassM)
+```
+
+
+```{r warning=FALSE}
+useThisPathways <- unique(moduleSummary$pathway[moduleSummary$pvalue <= 0.05])
+sModule <- moduleSummary[moduleSummary$pathway %in% useThisPathways, , drop = T]
+
+if (file.exists("MOSresults/permsM.RData")){
+    load("MOSresults/permsM.RData")
+}else{
+    perms <- resamplingModulesTwoClass(fullMultiOmics = multiOmics, 
+                                               classAnnotation, reactSmall, nperm = 2, 
+                                               pathwaySubset = useThisPathways, 
+                                               genesToConsider = row.names(pseudoExpNorm))
+    save(perms, file="MOSresults/permsM.RData")
+}
+
+stableModulesSummary <- selectStablePathwaysModules(perms = perms, moduleSummary = sModule, success = 80)
+resamplingSuccessCount <- getPathwaysModulesSuccess(perms = perms, moduleSummary = sModule)
+moduleSummary <- addResamplingCounts(moduleSummary, resamplingSuccessCount)
+```
+
+### More plots
+
 ```{r}
-runSupertest(multiPathwayModuleReport(twoClassM), pvalueThr = 0.05, zscoreThr = 0.05, excludeColumns = c("pathway", "module"))
+runSupertest(moduleSummary, pvalueThr = 0.05, zscoreThr = 0.05, resampligThr = 80,
+             excludeColumns = c("pathway", "module", "resamplingCount"))
 ```
 
 ```{r}
 pathHierarchyGraph <-  igraph::graph_from_data_frame(d =downloadPathwayRelationFromReactome(), directed = TRUE)
 
-omicsClasses2pathways <- computeOmicsIntersections(multiPathwayModuleReport(twoClassM), pvalueThr = 0.05, zscoreThr = 0.05, excludeColumns = c("pathway", "module"))
+omicsClasses2pathways <- computeOmicsIntersections(moduleSummary, pvalueThr = 0.05, 
+                                                   zscoreThr = 0.05, resampligThr = 80, 
+                                                   excludeColumns = c("pathway", "module", "resamplingCount"))
 omicsClasses2pathways <- lapply(omicsClasses2pathways, stripModulesFromPathways)
 omicsClasses2fathers <- lapply(omicsClasses2pathways, annotePathwayToFather, graphiteDB = reactome, hierarchy = pathHierarchyGraph)
 correspondence <- lapply(names(omicsClasses2pathways), function(omicClass) {
@@ -163,60 +242,77 @@ colors <- c(`cnv;exp` = "#ff5722", `cnv;exp;met` = "#FFAB00", `cnv;met` = "#A5F0
 plotFrequencies(MOMfreqDataframe.multi, minSize = 6, maxSize = 8, width = 10, manualColors = colors, lineSize = 1)
 ```
 
-### Permutations
-
-```{r warning=FALSE, eval=FALSE}
-moduleSummary <- multiPathwayModuleReport(twoClassM)
-
-useThisPathways <- unique(moduleSummary$pathway[moduleSummary$pvalue <= 0.05])
-sModule <- moduleSummary[moduleSummary$pathway %in% useThisPathways, , drop = T]
-
-system.time(perms <- resamplingModulesTwoClass(fullMultiOmics = multiOmics, 
-                                               classAnnotation, reactSmall, nperm = 100, 
-                                               pathwaySubset = useThisPathways, 
-                                               genesToConsider = row.names(pseudoExpNorm)))
-save(perms, file="../MOSresults/permsM.RData")
-
-stableModulesSummary <- selectStablePathwaysModules(perms = perms, moduleSummary = sModule, success = 80)
-resamplingSuccessCount <- getPathwaysModulesSuccess(perms = perms, moduleSummary = sModule)
-moduleSummary <- addResamplingCounts(moduleSummary, resamplingSuccessCount)
-```
-
 ## Two-class analysis on pathways
 
-```{r warning=FALSE, eval=FALSE}
+```{r warning=FALSE}
 multiOmics@specificArgs$pcaArgs$shrink=TRUE
 multiOmics@specificArgs$pcaArgs$method="topological"
 
-if (file.exists("twoClassP.rds")){
-  twoClassP <- readRDS("twoClassP.rds")
+if (file.exists("MOSresults/twoClassP.rds")){
+  twoClassP <- readRDS("MOSresults/twoClassP.rds")
 } else {
-  system.time(twoClassP <- lapply(reactHuge, function(g) {
-    res <- multiOmicsTwoClassPathwayTest(multiOmics, g, classAnnotation, useTheseGenes = row.names(pseudoExpNorm))
-    #print(g@title)
+  twoClassP <- lapply(reactHuge, function(g) {
+    res <- multiOmicsTwoClassPathwayTest(multiOmics, g, classAnnotation, 
+                                         useTheseGenes = row.names(pseudoExpNorm))
     res
-  }))}
+  })
+  saveRDS(twoClassP, file="MOSresults/twoClassP.rds")
+ }
+
+dup <- which(names(twoClassP)=="Translation of Replicase and Assembly of the Replication Transcription Complex")
+names(twoClassP)[dup[2]] <- "Translation of Replicase and Assembly of the Replication Transcription Complex.1"
+
 
 pathwaySummary <- multiPathwayReport(twoClassP)
 ```
 
-```{r eval=FALSE}
-save(twoClassM, twoClassP, file="twoClassSub_immmes.RData")
+```{r}
+kable(pathwaySummary[1:100,-1]) %>%
+  kable_styling() %>%
+  scroll_box(width = "100%", height = "600px")
 ```
+
+
+```{r message=FALSE}
+plotPathwayHeat(twoClassP[["Activation of Matrix Metalloproteinases"]], additionalAnnotations = classAnnotation,
+                additionalPaletteNames = list(classes="violet"))
+```
+
+```{r}
+runSupertest(pathwaySummary, pvalueThr = 0.05, zscoreThr = 0.05)
+```
+
+```{r}
+omicsClasses2pathways <- computeOmicsIntersections(pathwaySummary)
+omicsClasses2fathers <- lapply(omicsClasses2pathways, annotePathwayToFather, graphiteDB = reactome, 
+    hierarchy = pathHierarchyGraph)
+freqDataframe <- computeFreqs(omicsClasses2fathers)
+
+colors = c(cnv = "#E5C002", `cnv;exp` = "#ff5722", `cnv;exp;mut` = "#6B213A", `cnv;met` = "#A5F037", 
+    exp = "#E33402", `exp;met` = "#6c5b07", `exp;mut` = "#A200AD", met = "#04B880", 
+    mut = "#3871CC")
+
+plotFrequencies(freqDataframe, minSize = 3, maxSize = 7, width = 9, manualColors = colors, 
+    lineSize = 1)
+```
+
 
 ### Permutations
 
 ```{r warning=FALSE, eval=FALSE}
-pathwaySummary <- multiPathwayReport(twoClassP)
-
 useThisPathways <- unique(row.names(pathwaySummary)[pathwaySummary$pvalue <= 0.05])
 sPathway <- pathwaySummary[row.names(pathwaySummary) %in% useThisPathways, , drop = T]
 
-system.time(perms <- resamplingPathwayTwoClass(fullMultiOmics = multiOmics, 
-                                                classAnnotation, reactHuge, nperm = 1, 
+if (file.exists("MOSresults/permsP.RData")){
+    load("MOSresults/permsP.RData")
+} else{
+    perms <- resamplingPathwayTwoClass(fullMultiOmics = multiOmics, 
+                                                classAnnotation, reactHuge, nperm = 100, 
                                                 pathwaySubset = useThisPathways, 
-                                                genesToConsider = row.names(pseudoExpNorm)))
-save(perms, file="../MOSresults/permsP.RData")
+                                                genesToConsider = row.names(pseudoExpNorm))
+    save(perms, file="MOSresults/permsP.RData")
+}
+
 
 stablePathwaysSummary <- selectStablePathwaysModules(perms = perms, moduleSummary = sPathway, success = 80)
 resamplingSuccessCount <- getPathwaysModulesSuccess(perms = perms, moduleSummary = sPathway)
