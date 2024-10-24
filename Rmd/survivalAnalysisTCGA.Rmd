@@ -23,16 +23,8 @@ Furthermore, in MOSClip multiple efforts have been dedicated to the implementati
 First we need to load the necessary libraries:
 ```{r message=FALSE}
 # Loading libraries
-library(curatedTCGAData)
-library(TCGAutils)
-library(maftools)
-library(checkmate)
 library(org.Hs.eg.db)
 library(EDASeq)
-library(impute)
-library(doParallel)
-library(MethylMix)
-library(TCGAbiolinks)
 library(MOSClip)
 library(graphite)
 ```
@@ -152,7 +144,7 @@ reactHuge <- reactome[nodesLength >= 10]
 We also need the pathway hierarchy for the *MOSClip* summary plots, so it is convenient to download it now. 
 ```{r}
 pathHierarchy <- downloadPathwayRelationFromReactome()
-pathHierarchyGraph <- igraph::graph.data.frame(d = pathHierarchy, directed = TRUE)
+pathHierarchyGraph <- igraph::graph_from_data_frame(d = pathHierarchy, directed = TRUE)
 ```
 
 # Creating the Omics object
@@ -167,11 +159,18 @@ Specifically for the methylation data, *MOSClip* provides the possibility to inc
 multiOmics <- makeOmics(experiments = list(exp = pseudoExpNorm,
                                            met = methylation$MET_Cancer_Clustered,
                                            mut = mutation,
-                                           cnv = cnv),
+                                           cnv = as.matrix(cnv)),
                         colData = survAnnot,
-                        modelInfo = c("summarizeWithPca", "summarizeInCluster", "summarizeToNumberOfEvents", "summarizeToNumberOfDirectionalEvents"),
-                        specificArgs = list(pcaArgs = list(name = "exp", shrink = "FALSE", method = "sparse", maxPCs = 3),
-                                            clusterArgs = list(name = "met", dict = methylation$eMap, max_cluster_number = 3),
+                        modelInfo = c("summarizeWithPca", "summarizeInCluster",
+                                      "summarizeToNumberOfEvents",
+                                      "summarizeToNumberOfDirectionalEvents"),
+                        specificArgs = list(pcaArgs = list(name = "exp",
+                                                           shrink = "FALSE",
+                                                           method = "sparse",
+                                                           maxPCs = 3),
+                                            clusterArgs = list(name = "met",
+                                                               dict = methylation$eMap,
+                                                               max_cluster_number = 3),
                                             countEvent = list(name = "mut", min_prop = 0.05),
                                             cnvAgv = list(name = "cnv", min_prop = 0.05)))
 
@@ -195,22 +194,174 @@ Here we are going to perofm the multi-omics survival analysis on pathway **modul
 This step will create a list of *MultiOmicsModules* objects (aka "MOM" objects), in which each of them corresponds to one pathway.
 
 The analysis is quite long, so we will also save the analysis results for future usage. 
-```{r}
-if (file.exists("multiOmicsReactome.RData")) {
-    load("multiOmicsReactome.RData")
+```{r warning=FALSE}
+if (file.exists("momSurvivalList")) {
+    load("momSurvivalList.RData")
 } else {
-    multiOmicsReactome <- lapply(reactSmall, function(g) {
-        print(g@title)  # so you can see which pathway is being analyzed
-        res <- multiOmicsSurvivalModuleTest(multiOmics, g, survAnnot, useThisGenes = genesToConsider) # for each pathway contained in reactSmall, create the MOM object
+    momSurvivalList <- lapply(reactSmall, function(g) {
+        #print(g@title)  # uncomment it so you can see which pathway is being analyzed
+        # for each pathway contained in reactSmall, create the MOM object
+        res <- multiOmicsSurvivalModuleTest(multiOmics, graph = g,
+                                            useTheseGenes = genesToConsider)
         res
     })
-    file = paste0(dirname, "/multiOmicsReactome-", as.character(Sys.Date()), ".RData")
-    link = "multiOmicsReactome.RData"
-    save(multiOmicsReactome, file = file)
-    file.symlink(file, link)
+    save(momSurvivalList, file = "MOSresults/momSurvivalList.RData")
 }
 ```
 
-Now the analysis are done and we are ready to check it! *MOSClip* has plenty of functions to visually explore the results. We will show you some examples in the following part.
+## Pathway analysis
+In pathway test, the topology of the pathways (in and out gene connections) can be exploited to guide the data reduction step. For this analysis, we suggest to use the topological PCA instead of the sparse PCA, which can be performed by changing the settings in the Omics object.
+```{r}
+multiOmicsPathway <- multiOmics
+multiOmicsPathway@specificArgs$pcaArgs$method = "topological"
+multiOmicsPathway@specificArgs$pcaArgs$shrink = TRUE
+```
 
-### Module summary
+Then we can run the analysis using the function *multiOmicsSurvivalPathwayTest()*:
+```{r warning=FALSE}
+if (file.exists("mopSurvivalList")) {
+    load("mopSurvivalList.RData")
+} else {
+    mopSurvivalList <- lapply(reactSmall, function(g) {
+        #print(g@title)  # uncomment it so you can see which pathway is being analyzed
+        #for each pathway contained in reactSmall, create the MOM object
+        res <- multiOmicsSurvivalPathwayTest(multiOmicsPathway, graph = g,
+                                             useTheseGenes = genesToConsider)
+        res
+    })
+    save(mopSurvivalList, file = "MOSresults/mopSurvivalList.RData")
+}
+```
+This step created a list of *MultiOmicsPathway* objects ("MOP" objects for short), in which each of them corresponds to one pathway. This step also takes a while, so it is better to save the list for future analyses.
+
+Now the analyses are done and we are ready to check it! *MOSClip* has plenty of functions to explore the results. We will show you some examples in the following part.
+
+# Exploring the results
+## Results summary
+Using the function *multiPathwayModuleReport()* or *multiPathwayReport()* we can plot the tabular summary of the top 10 modules or pathways, selected by p-value of the Cox proportional hazard model.
+```{r moduleSummary}
+moduleSummary <- multiPathwayModuleReport(momSurvivalList)
+```
+```{r echo=FALSE}
+knitr::kable(moduleSummary[1:10,2:ncol(moduleSumary)])
+```
+
+```{r}
+pathwaySummary <- multiPathwayReport(mopSurvivalList)
+```
+```{r echo=FALSE}
+knitr::kable(pathwaySummary[1:10,])
+```
+
+## Graphical exploration of MOSClip results
+MOSClip have a function that can plot a heatmap of the report of the results. The heatmap is sorted by the p-value of the Cox proportional hazard model, using all the omics as covariates. The leftmost column is the p-value of the model, and the other columns are the p-values for each covariate. The color gradient also corresponds to the p-values. In this way, the plot can help to understand the involvment of different omics in the survival. 
+
+### Report as heatmap
+For the module analysis, the function is *plotModuleReport()* and it will plot all the modules of a chosen pathway. Please note that this function takes as input a list of MOM objects.
+```{r}
+plotModuleReport(momSurvivalList[["Activation of Matrix Metalloproteinases"]])
+```
+As you can see in this heatmap, the module 5 of the pathway "Activation of Matrix Metalloproteinases" (which in plotted in the previous example) is significant. Furthermore, we can infer the omics that drives this survival behavior from the pvalues of the model covariates: expression (expPC1 and PC2), and methylation (met2k2).
+
+For the pathway analysis, the function *plotMultiPathwayReport()* plots the first n pathways in a list of MOP objects:
+```{r}
+plotMultiPathwayReport(mopSurvivalList, 10)
+```
+Here we can see that the same pathway we chose before (the "Activation of Matrix Metalloproteinases") also remains signficiant when performing the pathway-type analysis.
+
+### Kaplan-Meier plots
+Now that we could identify significant pathway/modules and the covariates that are implicated with survival, we can also plot Kaplan-Meier curves, dividing patients in groups with different omics patterns:
+```{r}
+plotModuleKM(momSurvivalList[["Activation of Matrix Metalloproteinases"]], 5,
+             formula = "Surv(days, status) ~ expPC1 + met2k",
+             paletteNames = "Paired", inYears = TRUE)
+
+plotPathwayKM(mopSurvivalList[["Activation of ATR in response to replication stress"]], 
+             formula = "Surv(days, status) ~ cnvPOS + expPC1",
+             paletteNames = "Paired", inYears = TRUE)
+```
+
+### Heatmap 
+Finally, we can look at the predictive genes using heatmap and patient additional annotations.
+For this step, let's perform some additional formatting of the survival annotation data so we have a better heatmap:
+```{r}
+additionalA <- survAnnot
+additionalA$status[additionalA$status == 1] <- "event"
+additionalA$status[additionalA$status == 0] <- "no_event"
+additionalA$PFS <- as.factor(additionalA$status)
+additionalA$status <- NULL
+additionalA$years <- round(additionalA$days/365.24, 0)
+additionalA$days <- NULL
+```
+
+Then we can finally plot it:
+```{r}
+plotModuleHeat(momSurvivalList[["Activation of Matrix Metalloproteinases"]], 5,
+               sortBy = c("expPC1", "met2k", "status", "days"),
+               additionalAnnotations = survAnnot,
+               additionalPaletteNames = list(status = "teal", days = "violet"),
+               withSampleNames = F)
+
+plotPathwayHeat(mopSurvivalList[["Activation of ATR in response to replication stress"]],
+               sortBy = c("cnvPOS", "expPC1", "status", "days"),
+               additionalAnnotations = survAnnot,
+               additionalPaletteNames = list(status = "teal", days = "violet"),
+               withSampleNames = F)
+```
+When looking to predictive genes, it is extremely useful to correlate them to survival behavior (death event or survival time), as well as other types of annotation (e.g. tumor grade). That’s why MOSClip allows to plot heatmaps with additional custom annotations. 
+### Module in graph plot
+The function *plotModuleInGraph()* is specific for the module-type analysis, and it allows the visualization of the position of a chosen module inside its pathway. The function takes as input a MOM object, a "*PathwayList*" object from the *graphite* R package, which in our case is the variable *reactSmall*, and the module number we want to visualize:
+```{r}
+plotModuleInGraph(momSurvivalList[["Activation of Matrix Metalloproteinases"]],
+                  reactSmall, moduleNumber = 5)
+```
+
+# Resampling strategy
+So far, we have identified some modules or pathways that are significant. However, MOSClip gives the possibility to prioritize the most important and stable results with the resampling strategy. In this way, modules or pathways with a p-value <= 0.05 are resampled n times (customized) and later on select those successful above a certain threshold.
+In practice, this is done as below:
+```{r}
+useThesePathwaysM <- unique(moduleSummary$pathway[moduleSummary$pvalue <= 0.05])
+
+if (file.exists("permsModules.RData")) {
+    load("permsModules.RData")
+} else {
+    permsModules <- resamplingModulesSurvival(fullMultiOmics = multiOmics,
+                                              reactSmall, nperm = 100,
+                                              pathwaySubset = useThesePathwaysM,
+                                              genesToConsider = genesToConsider)
+    save(permsModules, file = "MOSresults/permsModules.RData")
+}
+```
+In our case we used 100 as number of permutations, and by default this function remove 3 patients per permutation (modifiable). Note that depending on the number of permutation set, this step could take a while to run. 
+
+For the pathway-type analysis is pretty much the same, only that tthe resampling function is different:
+```{r}
+useThesePathwaysP <- row.names(pathwaySummary[pathwaySummary$pvalue <= 0.05, ])
+if (file.exists("permsPathways.RData")) {
+    load("permsPathways.RData")
+} else {
+    permsPathways <- resamplingPathwaySurvival(fullMultiOmics = multiOmicsPathway,
+                                               reactHuge, nperm = 100,
+                                               pathwaySubset = useThisPathwaysP)
+    save(permsPathways, file = "MOSresults/permsPathways.RData")
+}
+```
+
+## Exploring resampling results
+Once the resampling analyses are completed, we can explore the results.
+First, we can plot the distribution modules/pathways according to the success count and pvalue:
+```{r}
+sModule <- moduleSummary[moduleSummary$pathway %in% useThesePathwaysM, , drop = T]
+stableModulesSummary <- selectStablePathwaysModules(perms = permsModules,
+                                                    moduleSummary = sModule,
+                                                    success = 80)
+
+# For the pathway-type results:
+sPathway <- pathwaySummary[useThesePathwaysP, , drop = T]
+stablePathwaysSummary <- selectStablePathwaysModules(perms = permsPathways,
+                                                    moduleSummary = sPathway,
+                                                    success = 80)
+```
+
+
+
