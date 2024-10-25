@@ -309,6 +309,59 @@ plotPathwayHeat(mopSurvivalList[["Activation of ATR in response to replication s
                withSampleNames = F)
 ```
 When looking to predictive genes, it is extremely useful to correlate them to survival behavior (death event or survival time), as well as other types of annotation (e.g. tumor grade). That’s why MOSClip allows to plot heatmaps with additional custom annotations. 
+
+### Super Exact test
+With *MOSClip* is possible to perform a exact test, which is done by implementing theoretical framework using the SuperExactTest R package. It provides  efficient computation of the statistical distributions of multi-omic pathways/module set intersections. Our function *runSupertest* will perfom this analysis and automatically provide a circular plot  with the frequency of all significant omic combinations and their significance levels.
+
+```{r}
+# For module analysis results
+moduleST <- runSupertest(moduleSummary, pvalueThr = 0.05, zscoreThr = 0.05,
+                         excludeColumns = c("pathway", "module"))
+
+# For pathway-type analysis results
+pathwayST <- runSupertest(pathwaySummary, pvalueThr = 0.05, zscoreThr = 0.05)
+```
+<ADD A FEW LINES EXPLANING THIS RESULT>
+
+### Frequency distribution with radial plot
+This plot shows the distribution of the pathways frequencies aggregated into macro categories. It uses Reactome or KEGG hierarchical structure, separately for each omic combinations. This plot can provide insights into prognostic biological processes that may be impacted by the omics and their cross-talk.
+
+To plot this, we first need to compute the omics intersections and then annotate the pathways to their fathers' nodes. Once this steps are done, we can finally compute the frequencies.
+
+```{r}
+# For module analysis
+modulesIntersections <- computeOmicsIntersections(moduleSummary,
+                                                   pvalueThr = 0.05,
+                                                   zscoreThr = 0.05,
+                                                   excludeColumns = 
+                                                     c("pathway", "module"))
+
+#This step is exclusive to module-type results, we are just removing the module number from the end of the row names
+modulesIntersections <- lapply(modulesIntersections, stripModulesFromPathways)
+
+modules2fathers <- lapply(modulesIntersections, annotePathwayToFather,
+                          graphiteDB = reactome,
+                          hierarchy = pathHierarchyGraph)
+MOMfreqDf <- computeFreqs(omicsClasses2fathers)
+
+# We can also create a dataframe to have an annotation of the pathways fathers 
+correspondence <- lapply(names(modulesIntersections), function(omicClass) {
+    data.frame(path = modulesIntersections[[omicClass]], father = modules2fathers[[omicClass]], stringsAsFactors = F)
+})
+
+plotFrequencies(MOMfreqDf)
+```
+Doing this plot for the results of the pathway-type analysis is pretty much the same:
+
+```{r}
+omicsClasses2pathways <- computeOmicsIntersections(pathwaySummary)
+omicsClasses2fathers <- lapply(omicsClasses2pathways, annotePathwayToFather, graphiteDB = reactome, hierarchy = pathHierarchyGraph)
+pathwayFreqDf <- computeFreqs(omicsClasses2fathers)
+
+plotFrequencies(pathwayFreqDf)
+```
+Note that here is not necessary to perfom the step to trip the module number from the pathway names, since we are not dealing with modules.
+
 ### Module in graph plot
 The function *plotModuleInGraph()* is specific for the module-type analysis, and it allows the visualization of the position of a chosen module inside its pathway. The function takes as input a MOM object, a "*PathwayList*" object from the *graphite* R package, which in our case is the variable *reactSmall*, and the module number we want to visualize:
 ```{r}
@@ -362,6 +415,8 @@ stablePathwaysSummary <- selectStablePathwaysModules(perms = permsPathways,
                                                     moduleSummary = sPathway,
                                                     success = 80)
 ```
+
+
 
 
 
