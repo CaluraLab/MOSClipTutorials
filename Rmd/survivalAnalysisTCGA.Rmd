@@ -243,7 +243,7 @@ Using the function *multiPathwayModuleReport()* or *multiPathwayReport()* we can
 moduleSummary <- multiPathwayModuleReport(momSurvivalList)
 ```
 ```{r echo=FALSE}
-knitr::kable(moduleSummary[1:10,2:ncol(moduleSumary)])
+knitr::kable(moduleSummary[1:10,2:ncol(moduleSummary)])
 ```
 
 ```{r}
@@ -342,7 +342,7 @@ modulesIntersections <- lapply(modulesIntersections, stripModulesFromPathways)
 modules2fathers <- lapply(modulesIntersections, annotePathwayToFather,
                           graphiteDB = reactome,
                           hierarchy = pathHierarchyGraph)
-MOMfreqDf <- computeFreqs(omicsClasses2fathers)
+MOMfreqDf <- computeFreqs(modules2fathers)
 
 # We can also create a dataframe to have an annotation of the pathways fathers 
 correspondence <- lapply(names(modulesIntersections), function(omicClass) {
@@ -372,7 +372,7 @@ plotModuleInGraph(momSurvivalList[["Activation of Matrix Metalloproteinases"]],
 # Resampling strategy
 So far, we have identified some modules or pathways that are significant. However, MOSClip gives the possibility to prioritize the most important and stable results with the resampling strategy. In this way, modules or pathways with a p-value <= 0.05 are resampled n times (customized) and later on select those successful above a certain threshold.
 In practice, this is done as below:
-```{r}
+```{r warning=FALSE}
 useThesePathwaysM <- unique(moduleSummary$pathway[moduleSummary$pvalue <= 0.05])
 
 if (file.exists("permsModules.RData")) {
@@ -388,14 +388,14 @@ if (file.exists("permsModules.RData")) {
 In our case we used 100 as number of permutations, and by default this function remove 3 patients per permutation (modifiable). Note that depending on the number of permutation set, this step could take a while to run. 
 
 For the pathway-type analysis is pretty much the same, only that tthe resampling function is different:
-```{r}
+```{r warning=FALSE, include=FALSE}
 useThesePathwaysP <- row.names(pathwaySummary[pathwaySummary$pvalue <= 0.05, ])
 if (file.exists("permsPathways.RData")) {
     load("permsPathways.RData")
 } else {
     permsPathways <- resamplingPathwaySurvival(fullMultiOmics = multiOmicsPathway,
                                                reactHuge, nperm = 100,
-                                               pathwaySubset = useThisPathwaysP)
+                                               pathwaySubset = useThesePathwaysP)
     save(permsPathways, file = "MOSresults/permsPathways.RData")
 }
 ```
@@ -404,19 +404,61 @@ if (file.exists("permsPathways.RData")) {
 Once the resampling analyses are completed, we can explore the results.
 First, we can plot the distribution modules/pathways according to the success count and pvalue:
 ```{r}
-sModule <- moduleSummary[moduleSummary$pathway %in% useThesePathwaysM, , drop = T]
+sModule <- moduleSummary[moduleSummary$pathway %in% useThesePathwaysM, ,
+                         drop = T]
 stableModulesSummary <- selectStablePathwaysModules(perms = permsModules,
                                                     moduleSummary = sModule,
                                                     success = 80)
+sucessCountModules <- getPathwaysModulesSuccess(perms = permsModules,
+                                                moduleSummary = sModule)
+moduleSummary <- addResamplingCounts(moduleSummary, sucessCountModules)
 
 # For the pathway-type results:
 sPathway <- pathwaySummary[useThesePathwaysP, , drop = T]
 stablePathwaysSummary <- selectStablePathwaysModules(perms = permsPathways,
                                                     moduleSummary = sPathway,
                                                     success = 80)
+sucessCountPathway <- getPathwaysModulesSuccess(perms = permsPathways,
+                                                moduleSummary = sPathway)
+pathwaySummary <- addResamplingCounts(pathwaySummary, sucessCountModules)
+```
+Here we can see the distribution of the resampling success counts and the p-value of the modules or pathways. Additionally, we created a new column in the results summary table to include the success counts of the resampling.
+
+### Plotting results after resampling
+The super exact test and the frequency distribution plot of MOSClip offers an additional filter specific for the resampling strategy. These two plots can plot only the modules or pathways that have a sucess count above a certain threshold:
+
+```{r}
+runSupertest(moduleSummary, pvalueThr = 0.05, zscoreThr = 0.05,
+             resampligThr = 80, excludeColumns = c("pathway", "module",
+                                                   "resamplingCount"))
+
 ```
 
 
+Here an example of a frequency plot with pathway-type analysis results, after performing the resampling strategy:
+```{r}
+omicsClasses2pathways <- computeOmicsIntersections(pathwaySummary,
+                                                   resampligThr = 80,
+                                                   excludeColumns =
+                                                     c("resamplingCount"))
+omicsClasses2fathers <- lapply(omicsClasses2pathways, annotePathwayToFather, graphiteDB = reactome, hierarchy = pathHierarchyGraph)
+pathwayFreqDf <- computeFreqs(omicsClasses2fathers)
+plotFrequencies(pathwayFreqDf)
+```
 
+Even if the plot do not have a specific parameter for resampling, we can still plot the modules/pathways with above a certain threshold of success count:
+```{r}
+resamplingTrue <- names(which(sucessCountPathway >= 80))
+plotMultiPathwayReport(mopSurvivalList[names(mopSurvivalList) %in%
+                                         resamplingTrue], 10)
+```
 
+# Conclusion
+In last ten years we have witnessed a dramatic change in the clinical treatment of patients thanks to molecular and personalized medicine. In fact, many medical institutes are starting to adopt routine genome wide screening to complement and help diagnosis and treatment choices. As the number of datasets grows, we need to adapt and improve the methods to cope with the complexity, amount and multi-level structure of available information. That is why we need analytical methods that effectively integrate multi-omic dimensions of this issue.
+
+MOSClip can deal with this complexity, allowing multi-omic data integration through survival pathway analyses. In brief, MOSClip comprises three main components: pathway topology, multi-omic data and survival analysis.
+
+In this tutorial, you learned how to perform a complete analysis of multi-omics integration to identify pathway or modules that are significant correlated with survival. Starting from the data matrices of four omics (expression, cnv, mutation, and methylation) we ended it up with multiple graphs that dissect every single aspect of the results.
+
+If you did not check yet, please check our other [tutorials](https://caluralab.github.io/MOSClipTutorials/)
 
