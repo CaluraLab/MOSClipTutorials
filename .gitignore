@@ -5,3 +5,4 @@ Gemfile*
 *.Rproj
 .Rhistory
 /downloadTCGA/
+.md
