@@ -6,7 +6,7 @@ output: html_document
 ## Prepare data for MOSClip analysis
 
 Now we are almost ready to run a two-class analysis with `MOSClip`!
-First of all, we can load the necessary libraries and the [pre-processed ovarian cancer datasets](https://github.com/CaluraLab/MOSClipTutorials/blob/main/Rmd/downloadTCGA/TCGA-OV-pre-processed.RData) 
+First of all, we can load the necessary libraries and the [pre-processed ovarian cancer datasets](https://caluralab.github.io/MOSClipTutorials/Rmd/downloadTCGA/TCGA-OV-pre-processed.RData) 
 that we downloaded from TCGA in the 
 [previous tutorials](https://caluralab.github.io/MOSClipTutorials/formatTCGAdatasets.html).
 We also set a seed, in order to have reproducible results in case of future repetition of this analysis,
@@ -119,7 +119,7 @@ We decide to use pathways collected in Reactome database. They can be downloaded
 using `graphite` that is also able to convert gene identifiers (here we use 
 Entrez Gene ID). 
 Since this download and conversion process can take several minutes, we will save the 
-[resulting PathwayList object](https://github.com/CaluraLab/MOSClipTutorials/blob/main/Rmd/downloadTCGA/reactome-entrez-2024-05-27.RData) 
+[resulting PathwayList object](https://caluralab.github.io/MOSClipTutorials/Rmd/downloadTCGA/reactome-entrez-2024-05-27.RData) 
 for easy access in future analyses.
 
 ```{r}
@@ -179,7 +179,7 @@ To avoid redundant results, we choose to focus on a subset of pathways, specific
 between 20 and 100 nodes (`reactSmall` list); this way, we aim to limit the overlap
 in gene testing.
 
-This step will take some minutes. For this reason, we'll save the [final output](https://github.com/CaluraLab/MOSClipTutorials/blob/main/Rmd/MOSresults/twoClass/twoClassM.rds) 
+This step will take some minutes. For this reason, we'll save the [final output](https://caluralab.github.io/MOSClipTutorials/Rmd/MOSresults/twoClass/twoClassM.rds) 
 in the directory "MOSresults", and in case of future analyses we'll load it from there.
 
 ```{r message=FALSE, warning=FALSE}
@@ -222,7 +222,7 @@ Modules are prioritized if they show a resampling success score greater than 80.
 We will run the analysis on a subset of pathways, considering only those pathways whose
 modules were found significant. 
 
-Since this step will take much time,  [results](https://github.com/CaluraLab/MOSClipTutorials/blob/main/Rmd/MOSresults/twoClass/permsM.RData) 
+Since this step will take much time,  [results](https://caluralab.github.io/MOSClipTutorials/Rmd/MOSresults/twoClass/permsM.RData) 
 are saved.
 
 ```{r warning=FALSE}
@@ -345,7 +345,7 @@ multiOmics@specificArgs$pcaArgs$method="topological"
 We are now ready to run the two-class analysis on pathways with the function
 `multiOmicsTwoClassPathwayTest`. The required input are the same shown for modules.
 In this case, we choose to test a greater amount of pathways (`reactHuge` list). 
-Again, since this may take some minutes, we save the [results](https://github.com/CaluraLab/MOSClipTutorials/blob/main/Rmd/MOSresults/twoClass/twoClassP.rds) 
+Again, since this may take some minutes, we save the [results](https://caluralab.github.io/MOSClipTutorials/Rmd/MOSresults/twoClass/twoClassP.rds) 
 for future usage.
 
 ```{r warning=FALSE}
