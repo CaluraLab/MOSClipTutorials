@@ -1,4 +1,12 @@
+---
+title: "Pre-processing of TCGA datasets"
+output: html_document
+---
 
+If you are here probably you have already downloaded a dataset from TCGA.
+At the end of the download procedure we saved a `.RData` file containing our favourite dataset.
+
+Now, we are going to load it along with some R packages.
 
 ```{r message=FALSE}
 library(maftools)
@@ -9,23 +17,40 @@ library(MethylMix)
 library(TCGAbiolinks)
 ```
 
-
-# Pre-processing
-
-```{r message=FALSE}
-source("../functions-to-process-TCGA-data.R")
-
-genome = "hg38"
-tumor = "OV"
-project = paste0("TCGA-", tumor)
-
+```{r eval=FALSE}
 # load data downloaded by TCGAbiolinks
 load("downloadTCGA/TCGA-OV-hg38.RData")
 ```
 
+```{r echo=FALSE}
+load("../downloadTCGA/TCGA-OV-hg38.RData")
+```
+
+
+To process the dataset and make the analysis procedure easier to follow, 
+we implemented some functions, that are stored in a separate file that we need to source.
+
+Please [download ‘functions-to-process-TCGA-data.R’](https://caluralab.github.io/MOSClipTutorials/Rmd/downloadTCGA/functions-to-process-TCGA-data.R) from our [GitHub page](https://github.com/CaluraLab/MOSClipTutorials) 
+and move it into the ‘downloadTCGA’ direcotry.  
+
+```{r message=FALSE}
+source("downloadTCGA/functions-to-process-TCGA-data.R")
+
+genome = "hg38"
+tumor = "OV"
+project = paste0("TCGA-", tumor)
+```
+
 ## Expression
 
-```{r}
+Now, we’re ready to start.
+
+The first dataset we are going to process here is the expression data. 
+We are going to set unique gene identifiers and store counts accordingly. 
+We choose to work with EntrezID; thus, we are going to translate the gene identifiers 
+and discard all the features without a valid EntrezID.
+
+```{r message=FALSE}
 # convert ensembl ids into entrez
 geneAnnotation <- rowData(exprData)
 
@@ -38,16 +63,24 @@ rowData(exprData) <- geneAnnotation
 genes <- geneAnnotation$gene_id[!is.na(geneAnnotation$entrezID)]
 ```
 
+We filter for patients features, selecting only patients with primary tumors.
+
 ```{r}
 # select primary tumors
 colAnnotation <- exprData@colData
-primaryTumorSel  <- colAnnotation$definition=="Primary solid Tumor"
+primaryTumorSel <- colAnnotation$definition == "Primary solid Tumor"
 primaryTumor <- colnames(exprData)[primaryTumorSel]
 ```
 
+We are going to filter the expression data: we keep only genes with a valid
+EntrezID on the rows, and primaryTumor samples on the columns.
+
 ```{r}
-exprData <- exprData[genes, primaryTumor, drop=F]
+exprData <- exprData[genes, primaryTumor, drop=FALSE]
 ```
+
+After the conversion of gene IDs, some of them may be duplicated.
+We are going to average the profiles of the genes present more than once in the expression matrix.
 
 ```{r}
 # take average for duplicated entrez ids
@@ -55,9 +88,9 @@ exp <- assay(exprData, 1)
 row.names(exp) <- sub("\\..*", "", row.names(exprData))
 
 avg <- tapply(row.names(exp), rowData(exprData)$entrezID, function(r){
-  row = exp[r, ,drop=F]
+  row = exp[r, ,drop=FALSE]
   if (nrow(row)>1)
-    row=colMeans(row, na.rm = T)
+    row=colMeans(row, na.rm = TRUE)
   row
 })
 
@@ -69,26 +102,48 @@ colnames(expAvg) <- substr(colnames(expAvg), 1, 12)
 expAvg[1:6, 1:6]
 ```
 
+Our expression matrix is now ready: EntrezID x samples.
+
 ## Mutation
 
+Next, we are going to prepare mutation data.
+Some statistics are summarized.
+
 ```{r}
-maf <- read.maf(mutData)
+maf <- read.maf(mutData)@data
 
+mut.statistics <- tapply(seq_along(maf$Hugo_Symbol), maf$IMPACT, function(idx){
+  stat = as.data.frame(table(maf[idx, 9]))
+  names(stat)[1] <- "mutation_type"
+  stat
+})
+
+mut.statistics
+```
+
+We choose to filter the data according to EntrezID genes that have been measured 
+in expression analysis. Moreover, mutations are filtered according to the impact of the mutation,
+considering mutations with high and moderate impact.
+
+```{r}
 considerThisImpactType <- c("HIGH", "MODERATE")
-#considerThisMutationType <- c("Missense_Mutation", "Nonsense_Mutation")
 
-ov.mutations <- prepareMutations(maf@data, impact=considerThisImpactType, 
-                                 filterByThisEntrez=row.names(expAvg), 
-                                 patients=colnames(expAvg))
+ov.mutations <- prepareMutations(maf, impact = considerThisImpactType, 
+                                 filterByThisEntrez = row.names(expAvg), 
+                                 patients = colnames(expAvg))
 
 ov.mutations$data[1:6,1:6]
 ```
 
 ## CNV
 
+We can now move to the CNV data. As we downloaded only the primary tumors, 
+we do not need any particular transformation. For CNV, our tool needs numeric values; 
+so we need to transform the values.
+
 ```{r}
 ov.cnv <- lapply(cnvData, as.numeric)
-ov.cnv <- data.frame(ov.cnv, check.names = F)
+ov.cnv <- data.frame(ov.cnv, check.names = FALSE)
 row.names(ov.cnv) <- row.names(cnvData)
 
 for (i in names(ov.cnv)) {
@@ -101,6 +156,11 @@ ov.cnv[1:6,1:6]
 
 ## Methylation
 
+Finally, we are going to process the methylation data with `MethylMix` R package.
+First, we are going to select the samples that are ‘primary tumors’ and ‘normals’ in the TCGA.
+We generate two datasets and we process both of them, removing rows with low values and 
+imputing missing values. Finally, we can create CpG clusters.
+
 ```{r}
 # Select primary solid tumors
 sampleSelection <- colData(metData27)[[5]] == "Primary solid Tumor"
@@ -111,55 +171,77 @@ normData <- metData27[, normals]
 metData <- metData27[, samples]
 
 # Remove all rows with low values and impute missing values
-thr <- ncol(assay(normData))*0.4
-remove <- apply(assay(normData),1,sum) > thr
+thr <- ncol(assay(normData)) * 0.4
+remove <- apply(assay(normData), 1, sum) > thr
 normAssay <- assay(normData)[!remove, ]
-normAssay <- imputeKNN(normAssay,k=5)$data
+normAssay <- imputeKNN(normAssay, k = 5)$data
 
-thr <- ncol(assay(metData))*0.4
-remove <- apply(is.na(assay(metData)),1,sum) > thr
+thr <- ncol(assay(metData)) * 0.4
+remove <- apply(is.na(assay(metData)), 1, sum) > thr
 metAssay <- assay(metData)[!remove, ]
-metAssay <- imputeKNN(metAssay,k=5)$data
+metAssay <- imputeKNN(metAssay, k = 5)$data
 
-# make clusters
+# Make clusters
 cl <- makeCluster(16)
 registerDoParallel(cl)
 metClustValues <- ClusterProbes(metAssay, normAssay)
 stopCluster(cl)
 ```
 
-```{r}
-# connect methylation clusters to genes
+The `metClustValues` object contains two methylation beta-value matrices and one dictionary, 
+which connects CpG clusters to the methylation array probes. 
+Now we need to connect methylation clusters to genes (EntrezID).
+
+```{r message=FALSE}
 geneNames <- sapply(strsplit(row.names(metClustValues$MET_Cancer_Clustered), "---"),
                     function(x) x[1])
 assList <- tapply(row.names(metClustValues$MET_Cancer_Clustered), geneNames, function(g) g)
-symbol2entrez <- mapIds(org.Hs.eg.db, keys=names(assList), column="ENTREZID",
-                        keytype="SYMBOL")
+symbol2entrez <- mapIds(org.Hs.eg.db, keys = names(assList), column = "ENTREZID",
+                        keytype = "SYMBOL")
 names(assList) <- symbol2entrez
 metClustValues$eMap <- assList[!is.na(names(assList))]
+
+metClustValues$MET_Cancer_Clustered[1:6, 1:6]
 ```
 
 ## Survival annotation
 
+To conclude, we extract the follow-up values. 
+We are going to calculate both Overall Survival (OS) and Progression Free Survival (PFI). 
+The definition of these two measures are made following [Liu et al., 2018](https://www.sciencedirect.com/science/article/pii/S0092867418302290).
+
+Using the function `createFollowUp` on clinical data, we are going to obtain the follow-up table.
+
 ```{r}
 fup <- createFollowUp(followUp, newTumorEvent)
+
+head(fup$os)
+head(fup$pfs)
 ```
 
 ## Two-class annotation
 
+The two-class annotation object is generated using TCGA ovarian cancer subtypes,
+that can be retrieved with the function `PanCancerAtlas_subtypes`.
+
 ```{r}
 subtypes <- PanCancerAtlas_subtypes()
-table(subtypes[subtypes$cancer.type=="OVCA", "Subtype_mRNA"])
+table(subtypes[subtypes$cancer.type == "OVCA", "Subtype_mRNA"])
 
-subtypes <- subtypes[subtypes$cancer.type=="OVCA",]
+subtypes <- subtypes[subtypes$cancer.type == "OVCA",]
 
 classes <- data.frame(row.names = substr(subtypes$pan.samplesID, 1, 12), 
-                      classes=subtypes$Subtype_mRNA)
+                      classes = subtypes$Subtype_mRNA)
+
+head(classes)
 ```
+
+We can save the [pre-processed dataset](https://caluralab.github.io/MOSClipTutorials/Rmd/downloadTCGA/TCGA-OV-pre-processed.RData) 
+on a `RData` file inside the 'downloadTCGA' directory.
 
 ```{r eval=FALSE}
 save(classes, fup, metClustValues, ov.cnv, ov.mutations, expAvg, 
-     file="downloadTCGA/TCGA-OV-pre-processed.RData")
+     file = "downloadTCGA/TCGA-OV-pre-processed.RData")
 ```
 
 

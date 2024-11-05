@@ -607,8 +607,8 @@ first step is to modify all the multi-omic matrices assigning the type
 of gene identifier used. Since we’ll be using the <code>graphite</code>
 package to download pathways and their graphical structures, gene names
 across all omics need to be compatible with <code>graphite</code>. For
-this analysis, we’ll use Entrez Gene IDs. Thus, each gene ID in our data
-must be prefixed with “ENTREZID:” for compatibility.</p>
+this analysis, we’ll use EntrezIDs. Thus, each gene ID in our data must
+be prefixed with “ENTREZID:” for compatibility.</p>
 <pre class="r"><code>expression &lt;- expAvg
 row.names(expression) &lt;- paste0(&quot;ENTREZID:&quot;, row.names(expression))
 mutation &lt;- ov.mutations$data
@@ -682,8 +682,8 @@ we want to exploit the topological method implemented in the
 package.</p>
 <p>We decide to use pathways collected in Reactome database. They can be
 downloaded using <code>graphite</code> that is also able to convert gene
-identifiers (here we use Entrez Gene ID). Since this download and
-conversion process can take several minutes, we will save the <a href="https://caluralab.github.io/MOSClipTutorials/Rmd/downloadTCGA/reactome-entrez-2024-05-27.RData">resulting
+identifiers (here we use EntrezID). Since this download and conversion
+process can take several minutes, we will save the <a href="https://caluralab.github.io/MOSClipTutorials/Rmd/downloadTCGA/reactome-entrez-2024-05-27.RData">resulting
 PathwayList object</a> for easy access in future analyses.</p>
 <pre class="r"><code>if (file.exists(&quot;downloadTCGA/reactome-entrez-2024-05-27.RData&quot;)) {
   load(&quot;downloadTCGA/reactome-entrez-2024-05-27.RData&quot;)
@@ -4720,8 +4720,8 @@ the topological method for PCA, as implemented in <code>MOSClip</code>,
 as well as a shrinkage approach. To do this, we change parameters for
 PCA in the <code>secificArgs</code> slot of our <code>Omics</code>
 object.</p>
-<pre class="r"><code>multiOmics@specificArgs$pcaArgs$shrink=TRUE
-multiOmics@specificArgs$pcaArgs$method=&quot;topological&quot;</code></pre>
+<pre class="r"><code>multiOmics@specificArgs$pcaArgs$shrink = TRUE
+multiOmics@specificArgs$pcaArgs$method = &quot;topological&quot;</code></pre>
 <p>We are now ready to run the two-class analysis on pathways with the
 function <code>multiOmicsTwoClassPathwayTest</code>. The required input
 are the same shown for modules. In this case, we choose to test a
@@ -8382,38 +8382,41 @@ in this tutorial are available <a href="https://github.com/CaluraLab/MOSClipTuto
 ## tzcode source: system (glibc)
 ## 
 ## attached base packages:
-## [1] stats4    stats     graphics  grDevices utils     datasets 
-## [7] methods   base     
+## [1] parallel  stats4    stats     graphics  grDevices utils    
+## [7] datasets  methods   base     
 ## 
 ## other attached packages:
-##  [1] devtools_2.4.5              usethis_3.0.0              
-##  [3] kableExtra_1.4.0            MOSClip_0.99.5             
-##  [5] graphite_1.52.0             EDASeq_2.40.0              
-##  [7] ShortRead_1.64.0            GenomicAlignments_1.42.0   
-##  [9] SummarizedExperiment_1.36.0 MatrixGenerics_1.18.0      
-## [11] matrixStats_1.4.1           Rsamtools_2.22.0           
-## [13] GenomicRanges_1.58.0        Biostrings_2.74.0          
-## [15] GenomeInfoDb_1.42.0         XVector_0.46.0             
-## [17] BiocParallel_1.40.0         org.Hs.eg.db_3.20.0        
-## [19] AnnotationDbi_1.68.0        IRanges_2.40.0             
-## [21] S4Vectors_0.44.0            Biobase_2.66.0             
-## [23] BiocGenerics_0.52.0        
+##  [1] MethylMix_2.36.0            doParallel_1.0.17          
+##  [3] iterators_1.0.14            foreach_1.5.2              
+##  [5] impute_1.80.0               maftools_2.22.0            
+##  [7] TCGAbiolinks_2.34.0         devtools_2.4.5             
+##  [9] usethis_3.0.0               kableExtra_1.4.0           
+## [11] MOSClip_0.99.5              graphite_1.52.0            
+## [13] EDASeq_2.40.0               ShortRead_1.64.0           
+## [15] GenomicAlignments_1.42.0    SummarizedExperiment_1.36.0
+## [17] MatrixGenerics_1.18.0       matrixStats_1.4.1          
+## [19] Rsamtools_2.22.0            GenomicRanges_1.58.0       
+## [21] Biostrings_2.74.0           GenomeInfoDb_1.42.0        
+## [23] XVector_0.46.0              BiocParallel_1.40.0        
+## [25] org.Hs.eg.db_3.20.0         AnnotationDbi_1.68.0       
+## [27] IRanges_2.40.0              S4Vectors_0.44.0           
+## [29] Biobase_2.66.0              BiocGenerics_0.52.0        
 ## 
 ## loaded via a namespace (and not attached):
 ##   [1] fs_1.6.5                    bitops_1.0-9               
 ##   [3] httr_1.4.7                  RColorBrewer_1.1-3         
-##   [5] SuperExactTest_1.1.0        doParallel_1.0.17          
-##   [7] Rgraphviz_2.50.0            profvis_0.4.0              
-##   [9] tools_4.4.2                 backports_1.5.0            
-##  [11] utf8_1.2.4                  R6_2.5.1                   
-##  [13] DT_0.33                     GetoptLong_1.0.5           
-##  [15] urlchecker_1.0.1            withr_3.0.2                
-##  [17] prettyunits_1.2.0           gridExtra_2.3              
-##  [19] cli_3.6.3                   gRbase_2.0.3               
-##  [21] Cairo_1.6-2                 flashClust_1.01-2          
-##  [23] sandwich_3.1-1              labeling_0.4.3             
-##  [25] sass_0.4.9                  mvtnorm_1.3-1              
-##  [27] survMisc_0.5.6              qpgraph_2.40.0             
+##   [5] SuperExactTest_1.1.0        Rgraphviz_2.50.0           
+##   [7] profvis_0.4.0               tools_4.4.2                
+##   [9] backports_1.5.0             utf8_1.2.4                 
+##  [11] R6_2.5.1                    DT_0.33                    
+##  [13] GetoptLong_1.0.5            urlchecker_1.0.1           
+##  [15] withr_3.0.2                 prettyunits_1.2.0          
+##  [17] gridExtra_2.3               cli_3.6.3                  
+##  [19] gRbase_2.0.3                Cairo_1.6-2                
+##  [21] flashClust_1.01-2           sandwich_3.1-1             
+##  [23] labeling_0.4.3              sass_0.4.9                 
+##  [25] mvtnorm_1.3-2               survMisc_0.5.6             
+##  [27] readr_2.1.5                 qpgraph_2.40.0             
 ##  [29] systemfonts_1.1.0           yulab.utils_0.1.7          
 ##  [31] svglite_2.1.3               R.utils_2.12.3             
 ##  [33] sessioninfo_1.2.2           rstudioapi_0.17.1          
@@ -8436,61 +8439,62 @@ in this tutorial are available <a href="https://github.com/CaluraLab/MOSClipTuto
 ##  [67] KEGGREST_1.46.0             magick_2.8.5               
 ##  [69] pillar_1.9.0                knitr_1.48                 
 ##  [71] ComplexHeatmap_2.22.0       rjson_0.2.23               
-##  [73] estimability_1.5.1          corpcor_1.6.10             
-##  [75] codetools_0.2-20            glue_1.8.0                 
-##  [77] remotes_2.5.0               data.table_1.16.2          
-##  [79] MultiAssayExperiment_1.32.0 vctrs_0.6.5                
-##  [81] png_0.1-8                   coxrobust_1.0.1            
-##  [83] gtable_0.3.6                cachem_1.1.0               
-##  [85] aroma.light_3.36.0          xfun_0.49                  
-##  [87] mime_0.12                   S4Arrays_1.6.0             
-##  [89] coda_0.19-4.1               survival_3.7-0             
-##  [91] pheatmap_1.0.12             iterators_1.0.14           
-##  [93] KMsurv_0.1-5                ellipsis_0.3.2             
-##  [95] TH.data_1.1-2               bit64_4.5.2                
-##  [97] progress_1.2.3              filelock_1.0.3             
-##  [99] bslib_0.8.0                 elasticnet_1.3             
-## [101] colorspace_2.1-1            DBI_1.2.3                  
-## [103] tidyselect_1.2.1            emmeans_1.10.5             
-## [105] bit_4.5.0                   compiler_4.4.2             
-## [107] curl_5.2.3                  httr2_1.0.5                
-## [109] graph_1.84.0                xml2_1.3.6                 
-## [111] DelayedArray_0.32.0         rtracklayer_1.66.0         
-## [113] checkmate_2.3.2             scales_1.3.0               
-## [115] multcompView_0.1-10         rappdirs_0.3.3             
-## [117] stringr_1.5.1               digest_0.6.37              
-## [119] rmarkdown_2.28              htmltools_0.5.8.1          
-## [121] pkgconfig_2.0.3             jpeg_0.1-10                
-## [123] highr_0.11                  FactoMineR_2.11            
-## [125] dbplyr_2.5.0                fastmap_1.2.0              
-## [127] rlang_1.1.4                 GlobalOptions_0.1.2        
-## [129] htmlwidgets_1.6.4           UCSC.utils_1.2.0           
-## [131] shiny_1.9.1                 farver_2.1.2               
-## [133] jquerylib_0.1.4             zoo_1.8-12                 
-## [135] jsonlite_1.8.9              R.oo_1.27.0                
-## [137] RCurl_1.98-1.16             magrittr_2.0.3             
-## [139] Formula_1.2-5               GenomeInfoDbData_1.2.13    
-## [141] ggplotify_0.1.2             NbClust_3.0.1              
-## [143] munsell_0.5.1               Rcpp_1.0.13                
-## [145] stringi_1.8.4               zlibbioc_1.52.0            
-## [147] MASS_7.3-61                 pkgbuild_1.4.5             
-## [149] plyr_1.8.9                  parallel_4.4.2             
-## [151] ggrepel_0.9.6               deldir_2.0-4               
-## [153] survminer_0.5.0             splines_4.4.2              
-## [155] hms_1.1.3                   circlize_0.4.16            
-## [157] igraph_2.1.1                ggpubr_0.6.0               
-## [159] ggsignif_0.6.4              pkgload_1.4.0              
-## [161] biomaRt_2.62.0              XML_3.99-0.17              
-## [163] evaluate_1.0.1              latticeExtra_0.6-30        
-## [165] foreach_1.5.2               httpuv_1.6.15              
-## [167] tidyr_1.3.1                 purrr_1.0.2                
-## [169] reshape_0.8.9               km.ci_0.5-6                
-## [171] clue_0.3-65                 ggplot2_3.5.1              
-## [173] BiocBaseUtils_1.8.0         broom_1.0.7                
-## [175] xtable_1.8-4                restfulr_0.0.15            
-## [177] rstatix_0.7.2               later_1.3.2                
-## [179] viridisLite_0.4.2           tibble_3.2.1               
-## [181] memoise_2.0.1               cluster_2.1.6</code></pre>
+##  [73] TCGAbiolinksGUI.data_1.26.0 estimability_1.5.1         
+##  [75] corpcor_1.6.10              codetools_0.2-20           
+##  [77] glue_1.8.0                  downloader_0.4             
+##  [79] remotes_2.5.0               data.table_1.16.2          
+##  [81] MultiAssayExperiment_1.32.0 vctrs_0.6.5                
+##  [83] png_0.1-8                   coxrobust_1.0.1            
+##  [85] gtable_0.3.6                cachem_1.1.0               
+##  [87] aroma.light_3.36.0          xfun_0.49                  
+##  [89] mime_0.12                   S4Arrays_1.6.0             
+##  [91] coda_0.19-4.1               survival_3.7-0             
+##  [93] pheatmap_1.0.12             KMsurv_0.1-5               
+##  [95] ellipsis_0.3.2              TH.data_1.1-2              
+##  [97] bit64_4.5.2                 progress_1.2.3             
+##  [99] filelock_1.0.3              bslib_0.8.0                
+## [101] elasticnet_1.3              colorspace_2.1-1           
+## [103] DBI_1.2.3                   DNAcopy_1.80.0             
+## [105] tidyselect_1.2.1            emmeans_1.10.5             
+## [107] bit_4.5.0                   compiler_4.4.2             
+## [109] curl_5.2.3                  rvest_1.0.4                
+## [111] httr2_1.0.6                 graph_1.84.0               
+## [113] xml2_1.3.6                  DelayedArray_0.32.0        
+## [115] rtracklayer_1.66.0          checkmate_2.3.2            
+## [117] scales_1.3.0                multcompView_0.1-10        
+## [119] rappdirs_0.3.3              stringr_1.5.1              
+## [121] digest_0.6.37               rmarkdown_2.29             
+## [123] htmltools_0.5.8.1           pkgconfig_2.0.3            
+## [125] jpeg_0.1-10                 highr_0.11                 
+## [127] FactoMineR_2.11             dbplyr_2.5.0               
+## [129] fastmap_1.2.0               rlang_1.1.4                
+## [131] GlobalOptions_0.1.2         htmlwidgets_1.6.4          
+## [133] UCSC.utils_1.2.0            shiny_1.9.1                
+## [135] farver_2.1.2                jquerylib_0.1.4            
+## [137] zoo_1.8-12                  jsonlite_1.8.9             
+## [139] R.oo_1.27.0                 RCurl_1.98-1.16            
+## [141] magrittr_2.0.3              Formula_1.2-5              
+## [143] GenomeInfoDbData_1.2.13     ggplotify_0.1.2            
+## [145] NbClust_3.0.1               munsell_0.5.1              
+## [147] Rcpp_1.0.13-1               stringi_1.8.4              
+## [149] zlibbioc_1.52.0             MASS_7.3-61                
+## [151] pkgbuild_1.4.5              plyr_1.8.9                 
+## [153] ggrepel_0.9.6               deldir_2.0-4               
+## [155] survminer_0.5.0             splines_4.4.2              
+## [157] hms_1.1.3                   circlize_0.4.16            
+## [159] igraph_2.1.1                ggpubr_0.6.0               
+## [161] ggsignif_0.6.4              pkgload_1.4.0              
+## [163] biomaRt_2.62.0              XML_3.99-0.17              
+## [165] evaluate_1.0.1              latticeExtra_0.6-30        
+## [167] tzdb_0.4.0                  httpuv_1.6.15              
+## [169] tidyr_1.3.1                 purrr_1.0.2                
+## [171] reshape_0.8.9               km.ci_0.5-6                
+## [173] clue_0.3-65                 ggplot2_3.5.1              
+## [175] BiocBaseUtils_1.8.0         broom_1.0.7                
+## [177] xtable_1.8-4                restfulr_0.0.15            
+## [179] rstatix_0.7.2               later_1.3.2                
+## [181] viridisLite_0.4.2           tibble_3.2.1               
+## [183] memoise_2.0.1               cluster_2.1.6</code></pre>
 </div>
 
 

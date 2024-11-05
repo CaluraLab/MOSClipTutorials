@@ -35,7 +35,7 @@ We need to prepare data in order to run `MOSClip`.
 The first step is to modify all the multi-omic matrices assigning the type of gene identifier used. 
 Since we’ll be using the `graphite` package to download pathways and their graphical structures, 
 gene names across all omics need to be compatible with `graphite`.
-For this analysis, we’ll use Entrez Gene IDs. Thus, each gene ID in our data must be 
+For this analysis, we’ll use EntrezIDs. Thus, each gene ID in our data must be 
 prefixed with “ENTREZID:” for compatibility.
 
 ```{r}
@@ -117,7 +117,7 @@ implemented in the package.
 
 We decide to use pathways collected in Reactome database. They can be downloaded 
 using `graphite` that is also able to convert gene identifiers (here we use 
-Entrez Gene ID). 
+EntrezID). 
 Since this download and conversion process can take several minutes, we will save the 
 [resulting PathwayList object](https://caluralab.github.io/MOSClipTutorials/Rmd/downloadTCGA/reactome-entrez-2024-05-27.RData) 
 for easy access in future analyses.
@@ -338,8 +338,8 @@ for PCA, as implemented in `MOSClip`, as well as a shrinkage approach. To do thi
 we change parameters for PCA in the `secificArgs` slot of our `Omics` object.
 
 ```{r}
-multiOmics@specificArgs$pcaArgs$shrink=TRUE
-multiOmics@specificArgs$pcaArgs$method="topological"
+multiOmics@specificArgs$pcaArgs$shrink = TRUE
+multiOmics@specificArgs$pcaArgs$method = "topological"
 ```
 
 We are now ready to run the two-class analysis on pathways with the function
