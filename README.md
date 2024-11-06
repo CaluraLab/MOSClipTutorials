@@ -3,7 +3,7 @@
 
 ## Welcome to MOSClip tutorial series!
 
-[`MOSClip`](https://github.com/CaluraLab/MOSClip) is an R package that allows performing multi-omic survival analysis exploiting pathway topology. 
+[MOSClip](https://github.com/CaluraLab/MOSClip) is an R package that allows performing multi-omic survival analysis exploiting pathway topology. 
 
 ![Cover](figures/cover.png)
 
@@ -15,8 +15,8 @@ If you are looking for tutorials you are in the right place.
 In this section you can find a [series of tutorials](https://caluralab.github.io/MOSClipTutorials):
 
 - [how to download data from TCGA](https://caluralab.github.io/MOSClipTutorials/downloadData.html)
-- [how to format the dataset for `MOSClip`](https://caluralab.github.io/MOSClipTutorials/formatTCGAdatasets.html) (Needs [functions-to-process-TCGA-data.R](https://caluralab.github.io/MOSClipTutorials/functions-to-process-TCGA-data.R) in the downloadTCGA directory)
-- [how to perform a two-class analysis](https://caluralab.github.io/MOSClipTutorials/analysisTCGA2class.html) ([Results](https://github.com/CaluraLab/MOSClipTutorials/tree/main/Rmd/MOSresults/twoClass) of this tutorial are available)
+- [how to format the dataset for MOSClip](https://caluralab.github.io/MOSClipTutorials/formatTCGAdatasets.html) (Needs [functions-to-process-TCGA-data.R](https://caluralab.github.io/MOSClipTutorials/functions-to-process-TCGA-data.R) in the downloadTCGA directory)
+- [how to perform a two-class analysis](https://caluralab.github.io/MOSClipTutorials/analysisTCGA2class.html) 
 
 
 ## Data availability
@@ -25,7 +25,7 @@ You can download the data generated in these tutorials.
 
 * [pre-processed ovarian cancer dataset](https://caluralab.github.io/MOSClipTutorials/Rmd/downloadTCGA/TCGA-OV-pre-processed.RData)
 * [reactome pathways (EntrezIDs)](https://caluralab.github.io/MOSClipTutorials/Rmd/downloadTCGA/reactome-entrez-2024-05-27.RData)
-* [two-class analysis results](https://caluralab.github.io/MOSClipTutorials/Rmd/MOSresults/twoClass)
+* [two-class analysis results](https://github.com/CaluraLab/MOSClipTutorials/tree/main/Rmd/MOSresults/twoClass)
 
 
 ## Installation
