@@ -1,6 +1,9 @@
 ---
 title: "MOSClip Two-Class Analysis on TCGA ovarian cancer patients"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
 ---
 
 ## Prepare data for MOSClip analysis
@@ -50,6 +53,10 @@ row.names(ov.cnv) <- paste0("ENTREZID:", row.names(ov.cnv))
 Moving to patient selection, we keep only patients whose class annotation 
 is available and their intersection with available patients across the 4 omics.
 Finally, our class annotation data frame is filtered to keep only the selected patients.
+
+We define the patient groups to compare, using the subtypes established for 
+TCGA ovarian cancer patients. 
+The user can decide which subtypes to compare.
 
 ```{r}
 # select common patients
@@ -109,6 +116,20 @@ multiOmics <- makeOmics(experiments = list(exp = pseudoExpNorm,
                         cnvAgv = list(name = "cnv", min_prop = 0.05)))
 ```
 
+For this tutorial, we’ll focus on a multi-omic comparison between 
+immunoreactive and mesenchymal subtypes, which should provide interesting insights.
+We then filter accordingly our `multiOmics` object.
+
+```{r}
+class1 <- "Immunoreactive"
+class2 <- "Mesenchymal"
+
+multiOmics <- multiOmics[, multiOmics$classes %in% c(class1, class2)]
+```
+
+Now we are ready for `MOSClip` two-class analysis.
+
+
 ### Download Reactome pathways
 
 To run a `MOSClip` analysis we also need a list of pathways that we want to test,
@@ -123,8 +144,8 @@ Since this download and conversion process can take several minutes, we will sav
 for easy access in future analyses.
 
 ```{r}
-if (file.exists("downloadTCGA/reactome-entrez-2024-05-27.RData")) {
-  load("downloadTCGA/reactome-entrez-2024-05-27.RData")
+if (file.exists("downloadTCGA/reactome-entrez.RData")) {
+  load("downloadTCGA/reactome-entrez.RData")
 } else {
   reactome <- pathways("hsapiens", "reactome")
   reactome <- convertIdentifiers(reactome, "entrez")
@@ -147,25 +168,7 @@ reactSmall <- reactome[nodesLength >= 20 & nodesLength <= 100]
 reactHuge <- reactome[nodesLength >= 10 & nodesLength <= 700]
 ```
 
-### Prepare class annotations
 
-We define the patient groups to compare, using the subtypes established for 
-TCGA ovarian cancer patients. 
-For this tutorial, we’ll focus on a multi-omic comparison between 
-immunoreactive and mesenchymal subtypes, which should provide interesting insights.
-The user can decide which subtypes to compare.
-
-We then filter accordingly our class annotation data frame and `multiOmics` object.
-
-```{r}
-class1 <- "Immunoreactive"
-class2 <- "Mesenchymal"
-
-classAnnotation <- classAnnot[classAnnot$classes %in% c(class1, class2), , drop=FALSE]
-multiOmics <- multiOmics[,row.names(classAnnotation)]
-```
-
-Now we are ready for `MOSClip` two-class analysis.
 
 ## Two-class analysis on modules
 
@@ -187,6 +190,7 @@ if (file.exists(paste0(dirname, "twoClassM.rds"))){
   twoClassM <- readRDS(paste0(dirname, "twoClassM.rds"))
 } else { 
     twoClassM <- lapply(reactSmall, function(g) {
+        #print(g@title)  # uncomment it so you can see which pathway is being analyzed
         res <- multiOmicsTwoClassModuleTest(multiOmics, g, classAnnotation, 
                                             useTheseGenes = row.names(pseudoExpNorm))
         res
@@ -207,9 +211,7 @@ moduleSummary <- multiPathwayModuleReport(twoClassM,
 ```
 
 ```{r echo=FALSE}
-kable(moduleSummary[1:100,-1]) %>%
-  kable_styling() %>%
-  scroll_box(width = "100%", height = "600px")
+knitr::kable(moduleSummary[1:10, 2:ncol(moduleSummary)])
 ```
 
 ### Permutations
@@ -353,6 +355,7 @@ if (file.exists(paste0(dirname, "twoClassP.rds"))){
   twoClassP <- readRDS(paste0(dirname, "twoClassP.rds"))
 } else {
   twoClassP <- lapply(reactHuge, function(g) {
+    #print(g@title)  # uncomment it so you can see which pathway is being analyzed
     res <- multiOmicsTwoClassPathwayTest(multiOmics, g, classAnnotation, 
                                          useTheseGenes = row.names(pseudoExpNorm))
     res
@@ -368,9 +371,7 @@ pathwaySummary <- multiPathwayReport(twoClassP)
 ```
 
 ```{r echo=FALSE}
-kable(pathwaySummary[1:100,]) %>%
-  kable_styling() %>%
-  scroll_box(width = "100%", height = "600px")
+knitr::kable(pathwaySummary[1:10,])
 ```
 
 ### Permutations

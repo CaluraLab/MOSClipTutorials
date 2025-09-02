@@ -15,6 +15,7 @@ library(impute)
 library(doParallel)
 library(MethylMix)
 library(TCGAbiolinks)
+library(MultiAssayExperiment)
 ```
 
 ```{r eval=FALSE}
