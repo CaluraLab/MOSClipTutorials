@@ -350,13 +350,12 @@ correspondence <- lapply(names(modulesIntersections), function(omicClass) {
                stringsAsFactors = F)
 })
 
-plotFrequencies(MOMfreqDf, 
-                minSize = 4, maxSize = 15, width = 12)
+plotFrequencies(MOMfreqDf, width = 12, maxSize = 12)
 ```
 
 Doing this plot for the results of the pathway-type analysis is pretty much the same:
 
-```{r}
+```{r fig.height=7}
 omicsClasses2pathways <- computeOmicsIntersections(pathwaySummary)
 omicsClasses2fathers <- lapply(omicsClasses2pathways, annotePathwayToFather, 
                                graphiteDB = reactome, hierarchy = pathHierarchyGraph)
@@ -370,9 +369,10 @@ Note that here is not necessary to perform the step to trip the module number fr
 
 ### Module in graph plot
 The function *plotModuleInGraph()* is specific for the module-type analysis, and it allows the visualization of the position of a chosen module inside its pathway. The function takes as input a `MultiOmicsModules` object, a `PathwayList` object from the *graphite* R package, which in our case is the variable *reactSmall*, and the module number we want to visualize:
-```{r}
+```{r message=FALSE}
 plotModuleInGraph(momSurvivalList[["Activation of Matrix Metalloproteinases"]],
-                  pathList = reactSmall, moduleNumber = 5)
+                  pathList = reactSmall, moduleNumber = 5, 
+                  paletteNames = c(exp = "red", met = "green", cnv = "yellow"))
 ```
 
 
@@ -484,3 +484,8 @@ MOSClip can deal with this complexity, allowing multi-omic data integration thro
 In this tutorial, you learned how to perform a complete analysis of multi-omics integration to identify pathway or modules that are significant correlated with survival. Starting from the data matrices of four omics (expression, cnv, mutation, and methylation) we ended it up with multiple graphs that dissect every single aspect of the results.
 
 If you did not check yet, please check our other [tutorials](https://caluralab.github.io/MOSClipTutorials/).
+
+```{r}
+sessionInfo()
+```
+
